@@ -12,6 +12,18 @@ with fewer hidden snags.  Additionally, because the language has more
 builtin functionality, it can rely less upon external (and possibly
 untrustworthy) programs to accomplish its purposes.
 
+=head1 SECURITY VULNERABILITY CONTACT INFORMATION
+
+If you believe you have found a security vulnerability in Perl, please email
+perl5-security-report@perl.org with details.  This points to a closed
+subscription, unarchived mailing list.  Please only use this address for
+security issues in the Perl core, not for modules independently distributed on
+CPAN.
+
+=head1 SECURITY MECHANISMS AND CONCERNS
+
+=head2 Taint mode
+
 Perl automatically enables a set of special security checks, called I<taint
 mode>, when it detects its program running with differing real and effective
 user or group IDs.  The setuid bit in Unix permissions is mode 04000, the
@@ -358,7 +370,11 @@ notices the otherwise useless setuid/gid bits on Perl scripts.  It does
 this via a special executable called F<suidperl> that is automatically
 invoked for you if it's needed.
 
-However, if the kernel set-id script feature isn't disabled, Perl will
+B<The use of suidperl is considered deprecated>, and will be removed
+in Perl 5.12.0.  It is I<strongly> recommended that all code uses
+the simplier and more secure C-wrappers described below.
+
+If the kernel set-id script feature isn't disabled, Perl will
 complain loudly that your set-id script is insecure.  You'll need to
 either disable the kernel set-id script feature, or put a C wrapper around
 the script.  A C wrapper is just a compiled program that does nothing
@@ -388,7 +404,8 @@ should never have to specify this yourself.  Most modern releases of
 SysVr4 and BSD 4.4 use this approach to avoid the kernel race condition.
 
 Prior to release 5.6.1 of Perl, bugs in the code of F<suidperl> could
-introduce a security hole.
+introduce a security hole.  The use of F<suidperl> is considered
+deprecated, and will be removed in Perl 5.12.0.
 
 =head2 Protecting Your Programs
 

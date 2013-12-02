@@ -1,12 +1,10 @@
 package charnames;
 use strict;
 use warnings;
-use Carp;
 use File::Spec;
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
 use bytes ();		# for $bytes::hint_bits
-$charnames::hint_bits = 0x20000; # HINT_LOCALIZE_HH
 
 my %alias1 = (
 		# Icky 3.2 names with parentheses.
@@ -43,6 +41,16 @@ my %alias3 = (
 		# User defined aliasses. Even more convenient :)
 	    );
 my $txt;
+
+sub croak
+{
+  require Carp; goto &Carp::croak;
+} # croak
+
+sub carp
+{
+  require Carp; goto &Carp::carp;
+} # carp
 
 sub alias (@)
 {
@@ -183,7 +191,6 @@ sub import
   if (not @_) {
     carp("`use charnames' needs explicit imports list");
   }
-  $^H |= $charnames::hint_bits;
   $^H{charnames} = \&charnames ;
 
   ##
@@ -413,7 +420,6 @@ for ZERO WIDTH NON-JOINER and ZERO WIDTH JOINER.
 For backward compatibility one can use the old names for
 certain C0 and C1 controls
 
-    use charnames ();		# for $charnames::hint_bits
     old                         new
 
     HORIZONTAL TABULATION       CHARACTER TABULATION
@@ -505,7 +511,6 @@ following magic incantation:
 
     sub import {
 	shift;
-	$^H |= $charnames::hint_bits;
 	$^H{charnames} = \&translator;
     }
 
@@ -535,6 +540,11 @@ given and C<undef> is returned.  (Though if you ask for a code point
 past U+10FFFF you do get a warning.)
 
 =head1 BUGS
+
+Unicode standard named sequences are not recognized, such as
+C<LATIN CAPITAL LETTER A WITH MACRON AND GRAVE>
+(which should mean C<LATIN CAPITAL LETTER A WITH MACRON> with an additional
+C<COMBINING GRAVE ACCENT>).
 
 Since evaluation of the translation function happens in a middle of
 compilation (of a string literal), the translation function should not

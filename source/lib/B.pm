@@ -7,7 +7,7 @@
 #
 package B;
 
-our $VERSION = '1.19';
+our $VERSION = '1.22';
 
 use XSLoader ();
 require Exporter;
@@ -240,7 +240,7 @@ sub walksymtable {
         $fullname = "*main::".$prefix.$sym;
 	if ($sym =~ /::$/) {
 	    $sym = $prefix . $sym;
-	    if ($sym ne "main::" && $sym ne "<none>::" && &$recurse($sym)) {
+	    if (svref_2object(\*$sym)->NAME ne "main::" && $sym ne "<none>::" && &$recurse($sym)) {
                walksymtable(\%$fullname, $method, $recurse, $sym);
 	    }
 	} else {
@@ -913,8 +913,6 @@ IoIFP($io) == PerlIO_stdin() ).
 
 =item MAX
 
-=item OFF
-
 =item ARRAY
 
 =item ARRAYelt
@@ -981,8 +979,6 @@ For constant subroutines, returns the constant SV returned by the subroutine.
 =item RITER
 
 =item NAME
-
-=item PMROOT
 
 =item ARRAY
 
@@ -1101,11 +1097,15 @@ This returns the op description from the global C PL_op_desc array
 
 =item pmnext
 
+Only up to Perl 5.9.4
+
 =item pmregexp
 
 =item pmflags
 
 =item extflags
+
+Since Perl 5.9.5
 
 =item precomp
 

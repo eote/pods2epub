@@ -32,6 +32,10 @@ Values stored in config.sh as 'undef' are returned as undefined
 values.  The perl C<exists> function can be used to check if a
 named variable exists.
 
+For a description of the variables, please have a look at the
+Glossary file, as written in the Porting folder, or use the url:
+http://perl5.git.perl.org/perl.git/blob/HEAD:/Porting/Glossary
+
 =over 4
 
 =item myconfig()
@@ -172,7 +176,7 @@ From F<afs.U>:
 This variable is by default set to F</afs>. In the unlikely case
 this is not the correct root, it is possible to override this with
 a hint value or command line option.  This will be used in subsequent
-tests for AFSness in the Perl configure and test process.
+tests for AFSness in the configure and test process.
 
 =item C<alignbytes>
 
@@ -341,7 +345,7 @@ The base revision level of this package, from the F<.package> file.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<bin>
 
@@ -515,7 +519,7 @@ produced. This is used to tag both F<config.sh> and F<config_h.SH>.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<chmod>
 
@@ -530,7 +534,7 @@ the value is reset to a plain C<chmod> and is not useful.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<clocktype>
 
@@ -553,7 +557,7 @@ the value is reset to a plain C<comm> and is not useful.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<contains>
 
@@ -577,7 +581,7 @@ the value is reset to a plain C<cp> and is not useful.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<cpp>
 
@@ -752,6 +756,13 @@ This variable conditionally defines C<ARCHLIB> to hold the pathname
 of architecture-dependent library files for $package.  If
 $archlib is the same as $privlib, then this is set to undef.
 
+=item C<d_asctime64>
+
+From F<d_timefuncs64.U>:
+
+This variable conditionally defines the HAS_ASCTIME64 symbol, which
+indicates to the C program that the asctime64 () routine is available.
+
 =item C<d_asctime_r>
 
 From F<d_asctime_r.U>:
@@ -773,6 +784,14 @@ From F<atoll.U>:
 
 This variable conditionally defines the C<HAS_ATOLL> symbol, which
 indicates to the C program that the atoll() routine is available.
+
+=item C<d_attribute_deprecated>
+
+From F<d_attribut.U>:
+
+This variable conditionally defines C<HASATTRIBUTE_DEPRECATED>, which
+indicates that C<GCC> can handle the attribute for marking deprecated
+APIs
 
 =item C<d_attribute_format>
 
@@ -1037,6 +1056,13 @@ This variable conditionally defines the C<HAS_CTERMID_R> symbol,
 which indicates to the C program that the ctermid_r()
 routine is available.
 
+=item C<d_ctime64>
+
+From F<d_timefuncs64.U>:
+
+This variable conditionally defines the HAS_CTIME64 symbol, which
+indicates to the C program that the ctime64 () routine is available.
+
 =item C<d_ctime_r>
 
 From F<d_ctime_r.U>:
@@ -1076,6 +1102,13 @@ From F<d_difftime.U>:
 
 This variable conditionally defines the C<HAS_DIFFTIME> symbol, which
 indicates to the C program that the difftime() routine is available.
+
+=item C<d_difftime64>
+
+From F<d_timefuncs64.U>:
+
+This variable conditionally defines the HAS_DIFFTIME64 symbol, which
+indicates to the C program that the difftime64 () routine is available.
 
 =item C<d_dir_dd_fd>
 
@@ -1527,6 +1560,38 @@ different value may need to be set by the F<uselongdouble.cbu>
 call-back unit so that long doubles can be formatted without
 loss of precision.
 
+=item C<d_gdbm_ndbm_h_uses_prototypes>
+
+From F<i_ndbm.U>:
+
+This variable conditionally defines the C<NDBM_H_USES_PROTOTYPES> symbol,
+which indicates that the gdbm-F<ndbm.h> include file uses real C<ANSI> C
+prototypes instead of K&R style function declarations. K&R style
+declarations are unsupported in C++, so the include file requires
+special handling when using a C++ compiler and this variable is
+undefined. Consult the different d_*ndbm_h_uses_prototypes variables
+to get the same information for alternative F<ndbm.h> include files.
+
+=item C<d_gdbmndbm_h_uses_prototypes>
+
+From F<i_ndbm.U>:
+
+This variable conditionally defines the C<NDBM_H_USES_PROTOTYPES> symbol,
+which indicates that the F<gdbm/ndbm.h> include file uses real C<ANSI> C
+prototypes instead of K&R style function declarations. K&R style
+declarations are unsupported in C++, so the include file requires
+special handling when using a C++ compiler and this variable is
+undefined. Consult the different d_*ndbm_h_uses_prototypes variables
+to get the same information for alternative F<ndbm.h> include files.
+
+=item C<d_getaddrinfo>
+
+From F<d_getaddrinfo.U>:
+
+This variable conditionally defines the C<HAS_GETADDRINFO> symbol,
+which indicates to the C program that the getaddrinfo() function
+is available.
+
 =item C<d_getcwd>
 
 From F<d_getcwd.U>:
@@ -1691,6 +1756,14 @@ From F<d_getmntent.U>:
 This variable conditionally defines the C<HAS_GETMNTENT> symbol, which
 indicates to the C program that the getmntent() routine is available
 to iterate through mounted files to get their mount info.
+
+=item C<d_getnameinfo>
+
+From F<d_getnameinfo.U>:
+
+This variable conditionally defines the C<HAS_GETNAMEINFO> symbol,
+which indicates to the C program that the getnameinfo() function
+is available.
 
 =item C<d_getnbyaddr>
 
@@ -1971,6 +2044,13 @@ This variable conditionally defines the C<HAS_GETTIMEOFDAY> symbol, which
 indicates that the gettimeofday() system call exists (to obtain a
 sub-second accuracy clock). You should probably include <sys/resource.h>.
 
+=item C<d_gmtime64>
+
+From F<d_timefuncs64.U>:
+
+This variable conditionally defines the HAS_GMTIME64 symbol, which
+indicates to the C program that the gmtime64 () routine is available.
+
 =item C<d_gmtime_r>
 
 From F<d_gmtime_r.U>:
@@ -2036,6 +2116,22 @@ From F<d_inetaton.U>:
 This variable conditionally defines the C<HAS_INET_ATON> symbol, which
 indicates to the C program that the inet_aton() function is available
 to parse C<IP> address C<dotted-quad> strings.
+
+=item C<d_inetntop>
+
+From F<d_inetntop.U>:
+
+This variable conditionally defines the C<HAS_INETNTOP> symbol,
+which indicates to the C program that the inet_ntop() function
+is available.
+
+=item C<d_inetpton>
+
+From F<d_inetpton.U>:
+
+This variable conditionally defines the C<HAS_INETPTON> symbol,
+which indicates to the C program that the inet_pton() function
+is available.
 
 =item C<d_int64_t>
 
@@ -2116,6 +2212,13 @@ From F<d_link.U>:
 
 This variable conditionally defines C<HAS_LINK> if link() is
 available to create hard links.
+
+=item C<d_localtime64>
+
+From F<d_timefuncs64.U>:
+
+This variable conditionally defines the HAS_LOCALTIME64 symbol, which
+indicates to the C program that the localtime64 () routine is available.
 
 =item C<d_localtime_r>
 
@@ -2308,6 +2411,13 @@ From F<d_mktime.U>:
 This variable conditionally defines the C<HAS_MKTIME> symbol, which
 indicates to the C program that the mktime() routine is available.
 
+=item C<d_mktime64>
+
+From F<d_timefuncs64.U>:
+
+This variable conditionally defines the HAS_MKTIME64 symbol, which
+indicates to the C program that the mktime64 () routine is available.
+
 =item C<d_mmap>
 
 From F<d_mmap.U>:
@@ -2452,12 +2562,28 @@ This variable conditionally defines C<MYMALLOC> in case other parts
 of the source want to take special action if C<MYMALLOC> is used.
 This may include different sorts of profiling or error detection.
 
-=item C<d_nanosleep>
+=item C<d_ndbm>
 
-From F<d_nanosleep.U>:
+From F<i_ndbm.U>:
 
-This variable conditionally defines C<HAS_NANOSLEEP>
-if nanosleep() is available to sleep with 1E-9 sec accuracy.
+This variable conditionally defines the C<HAS_NDBM> symbol, which
+indicates that both the F<ndbm.h> include file and an appropriate ndbm
+library exist.  Consult the different i_*ndbm variables
+to find out the actual include location.  Sometimes, a system has the
+header file but not the library.  This variable will only be set if
+the system has both.
+
+=item C<d_ndbm_h_uses_prototypes>
+
+From F<i_ndbm.U>:
+
+This variable conditionally defines the C<NDBM_H_USES_PROTOTYPES> symbol,
+which indicates that the F<ndbm.h> include file uses real C<ANSI> C
+prototypes instead of K&R style function declarations. K&R style
+declarations are unsupported in C++, so the include file requires
+special handling when using a C++ compiler and this variable is
+undefined. Consult the different d_*ndbm_h_uses_prototypes variables
+to get the same information for alternative F<ndbm.h> include files.
 
 =item C<d_nice>
 
@@ -3745,6 +3871,13 @@ This variable conditionally defines the C<HAS_TIME> symbol, which indicates
 that the time() routine exists.  The time() routine is normaly
 provided on C<UNIX> systems.
 
+=item C<d_timegm>
+
+From F<d_timegm.U>:
+
+This variable conditionally defines the C<HAS_TIMEGM> symbol, which
+indicates to the C program that the timegm () routine is available.
+
 =item C<d_times>
 
 From F<d_times.U>:
@@ -4095,6 +4228,12 @@ It is zero if d_drand48_r is undef, and one of the
 C<REENTRANT_PROTO_T_ABC> macros of F<reentr.h> if d_drand48_r
 is defined.
 
+=item C<dtrace>
+
+From F<usedtrace.U>:
+
+This variable holds the location of the dtrace executable.
+
 =item C<dynamic_ext>
 
 From F<Extensions.U>:
@@ -4150,7 +4289,7 @@ the value is reset to a plain C<egrep> and is not useful.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<endgrent_r_proto>
 
@@ -4282,7 +4421,7 @@ all pending stdio output.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<firstmakefile>
 
@@ -4298,7 +4437,7 @@ convoluted make depend tricks.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<fpossize>
 
@@ -4805,6 +4944,14 @@ From F<i_arpainet.U>:
 This variable conditionally defines the C<I_ARPA_INET> symbol,
 and indicates whether a C program should include <arpa/inet.h>.
 
+=item C<i_assert>
+
+From F<i_assert.U>:
+
+This variable conditionally defines the C<I_ASSERT> symbol, which
+indicates to the C program that <assert.h> exists and could be
+included.
+
 =item C<i_bsdioctl>
 
 From F<i_sysioctl.U>:
@@ -4895,6 +5042,24 @@ This variable conditionally defines the C<I_GDBM> symbol, which
 indicates to the C program that <gdbm.h> exists and should
 be included.
 
+=item C<i_gdbm_ndbm>
+
+From F<i_ndbm.U>:
+
+This variable conditionally defines the C<I_GDBM_NDBM> symbol, which
+indicates to the C program that <gdbm-F<ndbm.h>> exists and should
+be included.  This is the location of the F<ndbm.h> compatibility file
+in Debian 4.0.
+
+=item C<i_gdbmndbm>
+
+From F<i_ndbm.U>:
+
+This variable conditionally defines the C<I_GDBMNDBM> symbol, which
+indicates to the C program that <gdbm/ndbm.h> exists and should
+be included.  This was the location of the F<ndbm.h> compatibility file
+in RedHat 7.1.
+
 =item C<i_grp>
 
 From F<i_grp.U>:
@@ -4958,6 +5123,13 @@ From F<i_malloc.U>:
 
 This variable conditionally defines the C<I_MALLOC> symbol, and indicates
 whether a C program should include <malloc.h>.
+
+=item C<i_mallocmalloc>
+
+From F<i_mallocmalloc.U>:
+
+This variable conditionally defines the C<I_MALLOCMALLOC> symbol,
+and indicates whether a C program should include <malloc/malloc.h>.
 
 =item C<i_math>
 
@@ -5208,6 +5380,13 @@ From F<i_sysparam.U>:
 This variable conditionally defines the C<I_SYS_PARAM> symbol, and indicates
 whether a C program should include <sys/param.h>.
 
+=item C<i_syspoll>
+
+From F<i_syspoll.U>:
+
+This variable conditionally defines the C<I_SYS_POLL> symbol, which
+indicates to the C program that it should include <sys/poll.h>.
+
 =item C<i_sysresrc>
 
 From F<i_sysresrc.U>:
@@ -5444,7 +5623,7 @@ Value can be "" or F</bsd43> on mips.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<initialinstalllocation>
 
@@ -5776,7 +5955,7 @@ the package.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =back
 
@@ -5922,14 +6101,14 @@ like F<libswanted.>.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<lint>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<lkflags>
 
@@ -6009,14 +6188,14 @@ indicates to the C program how many bytes there are in a long.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<lpr>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<ls>
 
@@ -6085,14 +6264,14 @@ set to the name of the extra C source files to be used, else it is ''
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<mailx>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<make>
 
@@ -6115,8 +6294,8 @@ make_set_make=C<#>		# If your make program handles this for you,
 
 make_set_make=C<MAKE=$make>	# if it doesn't.
 
-This uses a comment character to distinguish a
-C<set> value (from a previous F<config.sh> or Configure -D option)
+This uses a comment character so that we can distinguish a
+C<set> value (from a previous F<config.sh> or Configure C<-D> option)
 from an uncomputed value.
 
 =item C<mallocobj>
@@ -6191,24 +6370,6 @@ This variable contains the extension that the manual page should
 have: one of C<n>, C<l>, or C<3>.  The Makefile must supply the F<.>.
 See man3dir.
 
-=back
-
-=cut
-
-=head2 M
-
-=over 4
-
-=cut
-
-=item C<Mcc>
-
-From F<Loc.U>:
-
-This variable is used internally by Configure to determine the
-full pathname (if any) of the Mcc program.  After Configure runs,
-the value is reset to a plain C<Mcc> and is not useful.
-
 =item C<mips_type>
 
 From F<usrinc.U>:
@@ -6272,7 +6433,7 @@ This is normally set by hints files.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<myarchname>
 
@@ -6322,7 +6483,7 @@ whole thing is then lower-cased.
 
 From F<n.U>:
 
-This variable contains the -n flag if that is what causes the echo
+This variable contains the C<-n> flag if that is what causes the echo
 command to suppress newline.  Otherwise it is null.  Correct usage is
 $echo $n "prompt for a question: $c".
 
@@ -6410,6 +6571,14 @@ From F<Loc.U>:
 This variable is used internally by Configure to determine the
 full pathname (if any) of the nroff program.  After Configure runs,
 the value is reset to a plain C<nroff> and is not useful.
+
+=item C<nv_overflows_integers_at>
+
+From F<perlxv.U>:
+
+This variable gives the largest integer value that NVs can hold
+as a constant floating point expression.
+If it could not be determined, it holds the value 0.
 
 =item C<nv_preserves_uv_bits>
 
@@ -6611,7 +6780,7 @@ used to separate elements in the command shell search C<PATH>.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<perl5>
 
@@ -6774,14 +6943,14 @@ machines, like the mips.  Usually, it should be empty.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<pr>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<prefix>
 
@@ -6966,7 +7135,7 @@ Internal Configure use only.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<run>
 
@@ -7058,7 +7227,7 @@ have select(), naturally.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<setgrent_r_proto>
 
@@ -7123,6 +7292,20 @@ It is zero if d_setservent_r is undef, and one of the
 C<REENTRANT_PROTO_T_ABC> macros of F<reentr.h> if d_setservent_r
 is defined.
 
+=item C<sGMTIME_max>
+
+From F<time_size.U>:
+
+This variable defines the maximum value of the time_t offset that
+the system function gmtime () accepts
+
+=item C<sGMTIME_min>
+
+From F<time_size.U>:
+
+This variable defines the minimum value of the time_t offset that
+the system function gmtime () accepts
+
 =item C<sh>
 
 From F<sh.U>:
@@ -7132,16 +7315,16 @@ on this system to execute Bourne shell scripts.  Usually, this will be
 F</bin/sh>, though it's possible that some systems will have F</bin/ksh>,
 F</bin/pdksh>, F</bin/ash>, F</bin/bash>, or even something such as
 D:F</bin/sh.exe>.
-This unit comes before F<Options.U>, so you can't set sh with a -D
+This unit comes before F<Options.U>, so you can't set sh with a C<-D>
 option, though you can override this (and startsh)
-with -O -Dsh=F</bin/whatever> -Dstartsh=whatever
+with C<-O -Dsh=F</bin/whatever> -Dstartsh=whatever>
 
 =item C<shar>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<sharpbang>
 
@@ -7457,14 +7640,28 @@ parameters for string functions.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
+
+=item C<sLOCALTIME_max>
+
+From F<time_size.U>:
+
+This variable defines the maximum value of the time_t offset that
+the system function localtime () accepts
+
+=item C<sLOCALTIME_min>
+
+From F<time_size.U>:
+
+This variable defines the minimum value of the time_t offset that
+the system function localtime () accepts
 
 =item C<smail>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<so>
 
@@ -7514,7 +7711,7 @@ sentences.
 From F<spitshell.U>:
 
 This variable contains the command necessary to spit out a runnable
-shell on this system.  It is either cat or a grep -v for # comments.
+shell on this system.  It is either cat or a grep C<-v> for # comments.
 
 =item C<sPRId64>
 
@@ -7630,9 +7827,9 @@ is defined.
 
 From F<src.U>:
 
-This variable holds the path to the package source. It is up to
-the Makefile to use this variable and set C<VPATH> accordingly to
-find the sources remotely.
+This variable holds the (possibly relative) path of the package source.
+It is up to the Makefile to use this variable and set C<VPATH> accordingly
+to find the sources remotely.  Use $pkgsrc to have an absolute path.
 
 =item C<sSCNfldbl>
 
@@ -7754,7 +7951,7 @@ used. Typically F</usr/include/string.h> or F</usr/include/strings.h>.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<subversion>
 
@@ -7790,14 +7987,14 @@ for unix commands (section 1 of the manual usually). See mansrc.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<tar>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<targetarch>
 
@@ -7811,14 +8008,14 @@ If not, this will be empty.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<tee>
 
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<test>
 
@@ -7890,7 +8087,7 @@ newline is not necessarily C<\012>.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<ttyname_r_proto>
 
@@ -8048,12 +8245,26 @@ From F<Cross.U>:
 This variable conditionally defines the C<USE_CROSS_COMPILE> symbol,
 and indicates that Perl has been cross-compiled.
 
+=item C<usedevel>
+
+From F<Devel.U>:
+
+This variable indicates that Perl was configured with development
+features enabled.  This should not be done for production builds.
+
 =item C<usedl>
 
 From F<dlsrc.U>:
 
 This variable indicates if the system supports dynamic
 loading of some sort.  See also dlsrc and dlobj.
+
+=item C<usedtrace>
+
+From F<usedtrace.U>:
+
+This variable indicates whether we are compiling with dtrace
+support. See also dtrace.
 
 =item C<usefaststdio>
 
@@ -8239,7 +8450,7 @@ usually F</usr/include>. It is mainly used by other Configure units.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<uvoformat>
 
@@ -8508,7 +8719,7 @@ Usually, this is undef.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<voidflags>
 
@@ -8575,7 +8786,7 @@ user.  It is up to the Makefile to use this.
 From F<Loc.U>:
 
 This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+The value is the empty string and is not useful.
 
 =item C<zip>
 
@@ -8587,6 +8798,21 @@ the value is reset to a plain C<zip> and is not useful.
 
 
 =back
+
+=head1 GIT DATA
+
+Information on the git commit from which the current perl binary was compiled
+can be found in the variable C<$Config::Git_Data>.  The variable is a
+structured string that looks something like this:
+
+  git_commit_id='ea0c2dbd5f5ac6845ecc7ec6696415bf8e27bd52'
+  git_describe='GitLive-blead-1076-gea0c2db'
+  git_branch='smartmatch'
+  git_uncommitted_changes=''
+  git_commit_id_title='Commit id:'
+  git_commit_date='2009-05-09 17:47:31 +0200'
+
+Its format is not guaranteed not to change over time.
 
 =head1 NOTE
 

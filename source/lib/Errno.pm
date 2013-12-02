@@ -12,7 +12,7 @@ use strict;
 "MSWin32-x86-multi-thread-5.1" or
 	die "Errno architecture (MSWin32-x86-multi-thread-5.1) does not match executable architecture ($Config{'archname'}-$Config{'osvers'})";
 
-$VERSION = "1.10";
+$VERSION = "1.11";
 $VERSION = eval $VERSION;
 @ISA = qw(Exporter);
 

@@ -4,11 +4,14 @@ perltodo - Perl TO-DO List
 
 =head1 DESCRIPTION
 
-This is a list of wishes for Perl. The tasks we think are smaller or
-easier are listed first. Anyone is welcome to work on any of these,
-but it's a good idea to first contact I<perl5-porters@perl.org> to
-avoid duplication of effort, and to learn from any previous attempts.
-By all means contact a pumpking privately first if you prefer.
+This is a list of wishes for Perl. The most up to date version of this file
+is at http://perl5.git.perl.org/perl.git/blob_plain/HEAD:/pod/perltodo.pod
+
+The tasks we think are smaller or easier are listed first. Anyone is welcome
+to work on any of these, but it's a good idea to first contact
+I<perl5-porters@perl.org> to avoid duplication of effort, and to learn from
+any previous attempts. By all means contact a pumpking privately first if you
+prefer.
 
 Whilst patches to make the list shorter are most welcome, ideas to add to
 the list are also encouraged. Check the perl5-porters archives for past
@@ -23,54 +26,9 @@ programming languages offer you 1 line of immortality?
 
 =head1 Tasks that only need Perl knowledge
 
-=head2 Smartmatch design issues
+=head2 Remove macperl references from tests
 
-In 5.10.0 the smartmatch operator C<~~> isn't working quite "right". But
-before we can fix the implementation, we need to define what "right" is.
-The first problem is that Robin Houston implemented the Perl 6 smart match
-spec as of February 2006, when smart match was axiomatically symmetrical:
-L<http://groups.google.com/group/perl.perl6.language/msg/bf2b486f089ad021>
-
-Since then the Perl 6 target moved, but the Perl 5 implementation did not.
-
-So it would be useful for someone to compare the Perl 6 smartmatch table
-as of February 2006 L<http://svn.perl.org/viewvc/perl6/doc/trunk/design/syn/S03.pod?view=markup&pathrev=7615>
-and the current table L<http://svn.perl.org/viewvc/perl6/doc/trunk/design/syn/S03.pod?revision=14556&view=markup>
-and tabulate the differences in Perl 6. The annotated view of changes is
-L<http://svn.perl.org/viewvc/perl6/doc/trunk/design/syn/S03.pod?view=annotate> and the diff is
-C<svn diff -r7615:14556 http://svn.perl.org/perl6/doc/trunk/design/syn/S03.pod>
--- search for C<=head1 Smart matching>. (In theory F<viewvc> can generate that,
-but in practice when I tried it hung forever, I assume "thinking")
-
-With that done and published, someone (else) can then map any changed Perl 6
-semantics back to Perl 5, based on how the existing semantics map to Perl 5:
-L<http://search.cpan.org/~rgarcia/perl-5.10.0/pod/perlsyn.pod#Smart_matching_in_detail>
-
-
-There are also some questions that need answering:
-
-=over 4
-
-=item *
-
-How do you negate one?  (documentation issue)
-http://www.xray.mpe.mpg.de/mailing-lists/perl5-porters/2008-01/msg00071.html
-
-=item *
-
-Array behaviors
-http://www.xray.mpe.mpg.de/mailing-lists/perl5-porters/2007-12/msg00799.html
-
-* Should smart matches be symmetrical? (Perl 6 says no)
-
-* Other differences between Perl 5 and Perl 6 smart match?
-
-=item *
-
-Objects and smart match
-http://www.xray.mpe.mpg.de/mailing-lists/perl5-porters/2007-12/msg00865.html
-
-=back
+MacPerl is gone. The tests don't need to be there.
 
 =head2 Remove duplication of test setup.
 
@@ -91,12 +49,17 @@ is needed to improve the cross-linking.
 The addition of C<Pod::Simple> and its related modules may make this task
 easier to complete.
 
-=head2 merge checkpods and podchecker
+=head2 Make ExtUtils::ParseXS use strict;
 
-F<pod/checkpods.PL> (and C<make check> in the F<pod/> subdirectory)
-implements a very basic check for pod files, but the errors it discovers
-aren't found by podchecker. Add this check to podchecker, get rid of
-checkpods and have C<make check> use podchecker.
+F<lib/ExtUtils/ParseXS.pm> contains this line
+
+    # use strict;  # One of these days...
+
+Simply uncomment it, and fix all the resulting issues :-)
+
+The more practical approach, to break the task down into manageable chunks, is
+to work your way though the code from bottom to top, or if necessary adding
+extra C<{ ... }> blocks, and turning on strict within them.
 
 =head2 Parallel testing
 
@@ -125,28 +88,6 @@ tests that are currently missing.
 =head2 test B
 
 A full test suite for the B module would be nice.
-
-=head2 Deparse inlined constants
-
-Code such as this
-
-    use constant PI => 4;
-    warn PI
-
-will currently deparse as
-
-    use constant ('PI', 4);
-    warn 4;
-
-because the tokenizer inlines the value of the constant subroutine C<PI>.
-This allows various compile time optimisations, such as constant folding
-and dead code elimination. Where these haven't happened (such as the example
-above) it ought be possible to make B::Deparse work out the name of the
-original constant, because just enough information survives in the symbol
-table to do this. Specifically, the same scalar is used for the constant in
-the optree as is used for the constant subroutine, so by iterating over all
-symbol tables and generating a mapping of SV address to constant name, it
-would be possible to provide B::Deparse with this functionality.
 
 =head2 A decent benchmark
 
@@ -426,6 +367,29 @@ C<$Config{link}> and institute a fall-back plan if it weren't found."
 Although I can see that as confusing, given that C<$Config{d_link}> is true
 when (hard) links are available.
 
+=head2 Configure Windows using PowerShell
+
+Currently, Windows uses hard-coded config files based to build the
+config.h for compiling Perl.  Makefiles are also hard-coded and need to be 
+hand edited prior to building Perl. While this makes it easy to create a perl.exe 
+that works across multiple Windows versions, being able to accurately
+configure a perl.exe for a specific Windows versions and VS C++ would be
+a nice enhancement.  With PowerShell available on Windows XP and up, this 
+may now be possible.  Step 1 might be to investigate whether this is possible
+and use this to clean up our current makefile situation.  Step 2 would be to 
+see if there would be a way to use our existing metaconfig units to configure a
+Windows Perl or whether we go in a separate direction and make it so.  Of 
+course, we all know what step 3 is.
+
+=head2 decouple -g and -DDEBUGGING
+
+Currently F<Configure> automatically adds C<-DDEBUGGING> to the C compiler
+flags if it spots C<-g> in the optimiser flags. The pre-processor directive
+C<DEBUGGING> enables F<perl>'s command line <-D> options, but in the process
+makes F<perl> slower. It would be good to disentangle this logic, so that
+C-level debugging with C<-g> and Perl level debugging with C<-D> can easily
+be enabled independently.
+
 =head1 Tasks that need a little C knowledge
 
 These tasks would need a little C knowledge, but don't need any specific
@@ -467,28 +431,6 @@ On these systems, it might be the default compilation mode, and there
 is currently no guarantee that passing no use64bitall option to the
 Configure process will build a 32bit perl. Implementing -Duse32bit*
 options would be nice for perl 5.12.
-
-=head2 Make it clear from -v if this is the exact official release
-
-Currently perl from C<p4>/C<rsync> ships with a F<patchlevel.h> file that
-usually defines one local patch, of the form "MAINT12345" or "RC1". The output
-of perl -v doesn't report that a perl isn't an official release, and this
-information can get lost in bugs reports. Because of this, the minor version
-isn't bumped up until RC time, to minimise the possibility of versions of perl
-escaping that believe themselves to be newer than they actually are.
-
-It would be useful to find an elegant way to have the "this is an interim
-maintenance release" or "this is a release candidate" in the terse -v output,
-and have it so that it's easy for the pumpking to remove this just as the
-release tarball is rolled up. This way the version pulled out of rsync would
-always say "I'm a development release" and it would be safe to bump the
-reported minor version as soon as a release ships, which would aid perl
-developers.
-
-This task is really about thinking of an elegant way to arrange the C source
-such that it's trivial for the Pumpking to flag "this is an official release"
-when making a tarball, yet leave the default source saying "I'm not the
-official release".
 
 =head2 Profile Perl - am I hot or not?
 
@@ -623,17 +565,26 @@ These tasks would need C knowledge, and roughly the level of knowledge of
 the perl API that comes from writing modules that use XS to interface to
 C.
 
-=head2 investigate removing int_macro_int from POSIX.xs
+=head2 Remove the use of SVs as temporaries in dump.c
 
-As a hang over from the original C<constant> implementation, F<POSIX.xs>
-contains a function C<int_macro_int> which in conjunction with C<AUTOLOAD> is
-used to wrap the C functions C<WEXITSTATUS>, C<WIFEXITED>, C<WIFSIGNALED>,
-C<WIFSTOPPED>, C<WSTOPSIG> and C<WTERMSIG>. It's probably worth replacing
-this complexity with 5 simple direct wrappings of those 5 functions.
+F<dump.c> contains debugging routines to dump out the contains of perl data
+structures, such as C<SV>s, C<AV>s and C<HV>s. Currently, the dumping code
+B<uses> C<SV>s for its temporary buffers, which was a logical initial
+implementation choice, as they provide ready made memory handling.
 
-However, it would be interesting if someone could measure the memory usage
-before and after, both for the case of C<use POSIX();> and the case of
-actually calling the Perl space functions.
+However, they also lead to a lot of confusion when it happens that what you're
+trying to debug is seen by the code in F<dump.c>, correctly or incorrectly, as
+a temporary scalar it can use for a temporary buffer. It's also not possible
+to dump scalars before the interpreter is properly set up, such as during
+ithreads cloning. It would be good to progressively replace the use of scalars
+as string accumulation buffers with something much simpler, directly allocated
+by C<malloc>. The F<dump.c> code is (or should be) only producing 7 bit
+US-ASCII, so output character sets are not an issue.
+
+Producing and proving an internal simple buffer allocation would make it easier
+to re-write the internals of the PerlIO subsystem to avoid using C<SV>s for
+B<its> buffers, use of which can cause problems similar to those of F<dump.c>,
+at similar times.
 
 =head2 safely supporting POSIX SA_SIGINFO
 
@@ -826,13 +777,6 @@ only the interpretation of non-ASCII characters, and not for the script file
 handle. To make it work needs some investigation of the ordering of function
 calls during startup, and (by implication) a bit of tweaking of that order.
 
-=head2 Propagate const outwards from Perl_moreswitches()
-
-Change 32057 changed the parameter and return value of C<Perl_moreswitches()>
-from <char *> to <const char *>. It should now be possible to propagate
-const-correctness outwards to C<S_parse_body()>, C<Perl_moreswitches()>
-and C<Perl_yylex()>.
-
 =head2 Duplicate logic in S_method_common() and Perl_gv_fetchmethod_autoload()
 
 A comment in C<S_method_common> notes
@@ -883,6 +827,27 @@ also the warning messages (see L<perllexwarn>, C<warnings.pl>).
 These tasks would need C knowledge, and knowledge of how the interpreter works,
 or a willingness to learn.
 
+=head2 forbid labels with keyword names
+
+Currently C<goto keyword> "computes" the label value:
+
+    $ perl -e 'goto print'
+    Can't find label 1 at -e line 1.
+
+It would be nice to forbid labels with keyword names, to avoid confusion.
+
+=head2 truncate() prototype
+
+The prototype of truncate() is currently C<$$>. It should probably
+be C<*$> instead. (This is changed in F<opcode.pl>)
+
+=head2 decapsulation of smart match argument
+
+Currently C<$foo ~~ $object> will die with the message "Smart matching a
+non-overloaded object breaks encapsulation". It would be nice to allow
+to bypass this by using explictly the syntax C<$foo ~~ %$object> or
+C<$foo ~~ @$object>.
+
 =head2 error reporting of [$a ; $b]
 
 Using C<;> inside brackets is a syntax error, and we don't propose to change
@@ -899,6 +864,21 @@ C<{}> used as a hashref, C<[]> or C<()>) it issues an error something like
 I<';' isn't legal inside an expression - if you need multiple statements use a
 do {...} block>. See the thread starting at
 http://www.xray.mpe.mpg.de/mailing-lists/perl5-porters/2008-09/msg00573.html
+
+=head2 lexicals used only once
+
+This warns:
+
+    $ perl -we '$pie = 42'
+    Name "main::pie" used only once: possible typo at -e line 1.
+
+This does not:
+
+    $ perl -we 'my $pie = 42'
+
+Logically all lexicals used only once should warn, if the user asks for
+warnings.  An unworked RT ticket (#5087) has been open for almost seven
+years for this discrepancy.
 
 =head2 UTF-8 revamp
 
@@ -946,6 +926,15 @@ L<http://www.xray.mpe.mpg.de/mailing-lists/perl5-porters/2007-03/msg00481.html>
 There is no method on tied filehandles to allow them to be called back by
 formats.
 
+=head2 Propagate compilation hints to the debugger
+
+Currently a debugger started with -dE on the command-line doesn't see the
+features enabled by -E. More generally hints (C<$^H> and C<%^H>) aren't
+propagated to the debugger. Probably it would be a good thing to propagate
+hints from the innermost non-C<DB::> scope: this would make code eval'ed
+in the debugger see the features (and strictures, etc.) currently in
+scope.
+
 =head2 Attach/detach debugger from running program
 
 The old perltodo notes "With C<gdb>, you can attach the debugger to a running
@@ -953,21 +942,10 @@ program if you pass the process ID. It would be good to do this with the Perl
 debugger on a running Perl program, although I'm not sure how it would be
 done." ssh and screen do this with named pipes in /tmp. Maybe we can too.
 
-=head2 Optimize away empty destructors
-
-Defining an empty DESTROY method might be useful (notably in
-AUTOLOAD-enabled classes), but it's still a bit expensive to call. That
-could probably be optimized.
-
 =head2 LVALUE functions for lists
 
 The old perltodo notes that lvalue functions don't work for list or hash
 slices. This would be good to fix.
-
-=head2 LVALUE functions in the debugger
-
-The old perltodo notes that lvalue functions don't work in the debugger. This
-would be good to fix.
 
 =head2 regexp optimiser optional
 
@@ -1072,7 +1050,7 @@ See also L</"Extend PerlIO and PerlIO::Scalar">.
 
 =head2 Investigate PADTMP hash pessimisation
 
-The peephole optimier converts constants used for hash key lookups to shared
+The peephole optimiser converts constants used for hash key lookups to shared
 hash key scalars. Under ithreads, something is undoing this work.
 See http://www.xray.mpe.mpg.de/mailing-lists/perl5-porters/2007-09/msg00793.html
 
@@ -1186,6 +1164,12 @@ combines the code in pp_entersub, pp_leavesub.  This should probably
 be done 1st in XS, and using B::Generate to patch the new OP into the
 optrees.
 
+=head2 C<\N>
+
+It should be possible to add a C<\N> regex assertion, meaning "every
+character except C<\n>° independently of the context. That would
+of course imply that C<\N> couldn't be followed by an opening C<{>.
+
 =head1 Big projects
 
 Tasks that will get your name mentioned in the description of the "Highlights
@@ -1222,3 +1206,24 @@ This will allow the use of a regex from inside (?{ }), (??{ }) and
 Apparently these are quite useful. Anyway, Jeffery Friedl wants them.
 
 demerphq has this on his todo list, but right at the bottom.  
+
+
+=head1 Tasks for microperl
+
+
+[ Each and every one of these may be obsolete, but they were listed
+  in the old Todo.micro file]
+
+
+=head2 make creating uconfig.sh automatic 
+
+=head2 make creating Makefile.micro automatic
+
+=head2 do away with fork/exec/wait?
+
+(system, popen should be enough?)
+
+=head2 some of the uconfig.sh really needs to be probed (using cc) in buildtime:
+
+(uConfigure? :-) native datatype widths and endianness come to mind
+

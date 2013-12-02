@@ -10,9 +10,11 @@ package File::Copy;
 use 5.006;
 use strict;
 use warnings;
-use Carp;
 use File::Spec;
 use Config;
+# During perl build, we need File::Copy but Fcntl might not be built yet
+# *** not needed for 2.14, only 2.15
+# *** my $Fcntl_loaded = eval q{ use Fcntl qw [O_CREAT O_WRONLY O_TRUNC]; 1 };
 # Similarly Scalar::Util
 # And then we need these games to avoid loading overload, as that will
 # confuse miniperl during the bootstrap of perl.
@@ -23,12 +25,7 @@ sub syscopy;
 sub cp;
 sub mv;
 
-# Note that this module implements only *part* of the API defined by
-# the File/Copy.pm module of the File-Tools-2.0 package.  However, that
-# package has not yet been updated to work with Perl 5.004, and so it
-# would be a Bad Thing for the CPAN module to grab it and replace this
-# module.  Therefore, we set this module's version higher than 2.0.
-$VERSION = '2.13';
+$VERSION = '2.14';
 
 require Exporter;
 @ISA = qw(Exporter);
@@ -36,6 +33,16 @@ require Exporter;
 @EXPORT_OK = qw(cp mv);
 
 $Too_Big = 1024 * 1024 * 2;
+
+sub croak {
+    require Carp;
+    goto &Carp::croak;
+}
+
+sub carp {
+    require Carp;
+    goto &Carp::carp;
+}
 
 my $macfiles;
 if ($^O eq 'MacOS') {

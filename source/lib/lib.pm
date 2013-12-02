@@ -13,7 +13,7 @@ my @inc_version_list = reverse split / /, $Config{inc_version_list};
 
 
 our @ORIG_INC = @INC;	# take a handy copy of 'original' value
-our $VERSION = '0.61';
+our $VERSION = '0.62';
 my $Is_MacOS = $^O eq 'MacOS';
 my $Mac_FS;
 if ($Is_MacOS) {

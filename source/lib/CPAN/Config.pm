@@ -4,6 +4,22 @@
 # configuration file. The user-config file is being looked for as
 # ~/.cpan/CPAN/MyConfig.pm.
 
+my @urllist = (
+    q[http://cpan.strawberryperl.com/],
+);
+if ( -d 'C:\\strawberry\\minicpan' ) {
+	# If we are on fake Hotel/Airport wireless,
+	# prefer the minicpan to the poisoned wireless.
+	eval { require LWP::Online; };
+	unless ( $@ ) {
+		if ( LWP::Online::online() ) {
+			push @urllist, q[file:///C:/strawberry/minicpan/];
+		} else {
+			unshift @urllist, q[file:///C:/strawberry/minicpan/];
+		}
+	}
+}
+
 $CPAN::Config = {
   applypatch                    => q[],
   auto_commit                   => q[1],
@@ -61,17 +77,16 @@ $CPAN::Config = {
   term_ornaments                => q[0],
   test_report                   => q[0],
   unzip                         => q[],
-  urllist                       => [
-    q[http://cpan.strawberryperl.com/],
-    (-d 'C:\\strawberry\\minicpan'
-      ? (q[file:///C:/strawberry/minicpan/])
-      : ()
-    ),
-  ],
+  urllist                       => \@urllist,
   use_sqlite                    => q[1],
   wget                          => q[],
   yaml_load_code                => q[0],
   yaml_module                   => q[YAML],
 };
+eval {
+	require Portable;
+	Portable->import('CPAN');
+};
+
 
 1;

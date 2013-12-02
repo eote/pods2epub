@@ -1,8 +1,6 @@
 package overload;
 
-our $VERSION = '1.06';
-
-$overload::hint_bits = 0x20000; # HINT_LOCALIZE_HH
+our $VERSION = '1.07';
 
 sub nil {}
 
@@ -105,12 +103,13 @@ sub AddrRef {
 
 sub mycan {				# Real can would leave stubs.
   my ($package, $meth) = @_;
-  return \*{$package . "::$meth"} if defined &{$package . "::$meth"};
-  my $p;
-  foreach $p (@{$package . "::ISA"}) {
-    my $out = mycan($p, $meth);
-    return $out if $out;
+
+  my $mro = mro::get_linear_isa($package);
+  foreach my $p (@$mro) {
+    my $fqmeth = $p . q{::} . $meth;
+    return \*{$fqmeth} if defined &{$fqmeth};
   }
+
   return undef;
 }
 
@@ -134,6 +133,7 @@ sub mycan {				# Real can would leave stubs.
 	 conversion	  => 'bool "" 0+',
 	 iterators	  => '<>',
 	 dereferencing	  => '${} @{} %{} &{} *{}',
+	 matching	  => '~~',
 	 special	  => 'nomethod fallback =');
 
 use warnings::register;
@@ -147,7 +147,7 @@ sub constant {
     elsif (!exists $constants {$_ [0]}) {
         warnings::warnif ("`$_[0]' is not an overloadable type");
     }
-    elsif (!ref $_ [1] || "$_[1]" !~ /CODE\(0x[\da-f]+\)$/) {
+    elsif (!ref $_ [1] || "$_[1]" !~ /(^|=)CODE\(0x[0-9a-f]+\)$/) {
         # Can't use C<ref $_[1] eq "CODE"> above as code references can be
         # blessed, and C<ref> would return the package the ref is blessed into.
         if (warnings::enabled) {
@@ -157,7 +157,7 @@ sub constant {
     }
     else {
         $^H{$_[0]} = $_[1];
-        $^H |= $constants{$_[0]} | $overload::hint_bits;
+        $^H |= $constants{$_[0]};
     }
     shift, shift;
   }
@@ -191,7 +191,7 @@ overload - Package for overloading Perl operations
     ...
 
     package main;
-    $a = new SomeThing 57;
+    $a = SomeThing->new( 57 );
     $b=5+$a;
     ...
     if (overload::Overloaded $b) {...}
@@ -199,6 +199,9 @@ overload - Package for overloading Perl operations
     $strval = overload::StrVal $b;
 
 =head1 DESCRIPTION
+
+This pragma allows overloading of Perl's operators for a class.
+To overload built-in functions, see L<perlsub/Overriding Built-in Functions> instead.
 
 =head2 Declaration of overloaded functions
 
@@ -418,6 +421,37 @@ I<globbing> syntax C<E<lt>${var}E<gt>>.
 B<BUGS> Even in list context, the iterator is currently called only
 once and with scalar context.
 
+=item * I<Matching>
+
+The key C<"~~"> allows you to override the smart matching logic used by
+the C<~~> operator and the switch construct (C<given>/C<when>).  See
+L<perlsyn/switch> and L<feature>.
+
+Unusually, overloading of the smart match operator does not automatically
+take precedence over normal smart match behaviour. In particular, in the
+following code:
+
+    package Foo;
+    use overload '~~' => 'match';
+
+    my $obj =  Foo->new();
+    $obj ~~ [ 1,2,3 ];
+
+the smart match does I<not> invoke the method call like this:
+
+    $obj->match([1,2,3],0);
+
+rather, the smart match distributive rule takes precedence, so $obj is
+smart matched against each array element in turn until a match is found,
+so you may see between one and three of these calls instead:
+
+    $obj->match(1,0);
+    $obj->match(2,0);
+    $obj->match(3,0);
+
+Consult the match table in  L<perlsyn/"Smart matching in detail"> for
+details of when overloading is invoked.
+
 =item * I<Dereferencing>
 
     '${}', '@{}', '%{}', '&{}', '*{}'.
@@ -434,7 +468,7 @@ The dereference operators must be specified explicitly they will not be passed t
 
 =item * I<Special>
 
-    "nomethod", "fallback", "=",
+    "nomethod", "fallback", "=".
 
 see L<SPECIAL SYMBOLS FOR C<use overload>>.
 
@@ -458,6 +492,7 @@ A computer-readable form of the above table is available in the hash
  conversion	  => 'bool "" 0+',
  iterators	  => '<>',
  dereferencing	  => '${} @{} %{} &{} *{}',
+ matching	  => '~~',
  special	  => 'nomethod fallback ='
 
 =head2 Inheritance and overloading
@@ -809,9 +844,6 @@ From these methods they may be called as
 	  overload::constant integer => sub {Math::BigInt->new(shift)};
 	}
 
-B<BUGS> Currently overloaded-ness of constants does not propagate
-into C<eval '...'>.
-
 =head1 IMPLEMENTATION
 
 What follows is subject to change RSN.
@@ -897,7 +929,7 @@ If some mutator methods are directly applied to the overloaded values,
 one may need to I<explicitly unlink> other values which references the
 same value:
 
-    $a = new Data 23;
+    $a = Data->new(23);
     ...
     $b = $a;		# $b is "linked" to $a
     ...
@@ -906,13 +938,13 @@ same value:
 
 Note that overloaded access makes this transparent:
 
-    $a = new Data 23;
+    $a = Data->new(23);
     $b = $a;		# $b is "linked" to $a
     $a += 4;		# would unlink $b automagically
 
 However, it would not make
 
-    $a = new Data 23;
+    $a = Data->new(23);
     $a = 4;		# Now $a is a plain 4, not 'Data'
 
 preserve "objectness" of $a.  But Perl I<has> a way to make assignments
@@ -942,7 +974,7 @@ Put this in F<two_face.pm> in your Perl library directory:
 Use it as follows:
 
   require two_face;
-  my $seven = new two_face ("vii", 7);
+  my $seven = two_face->new("vii", 7);
   printf "seven=$seven, seven=%d, eight=%d\n", $seven, $seven+1;
   print "seven contains `i'\n" if $seven =~ /i/;
 
@@ -955,10 +987,7 @@ numeric value.)  This prints:
 =head2 Two-face references
 
 Suppose you want to create an object which is accessible as both an
-array reference and a hash reference, similar to the
-L<pseudo-hash|perlref/"Pseudo-hashes: Using an array as a hash">
-builtin Perl type.  Let's make it better than a pseudo-hash by
-allowing index 0 to be treated as a normal element.
+array reference and a hash reference.
 
   package two_refs;
   use overload '%{}' => \&gethash, '@{}' => sub { $ {shift()} };
@@ -992,7 +1021,7 @@ allowing index 0 to be treated as a normal element.
 
 Now one can access an object using both the array and hash syntax:
 
-  my $bar = new two_refs 3,4,5,6;
+  my $bar = two_refs->new(3,4,5,6);
   $bar->[2] = 11;
   $bar->{two} == 11 or die 'bad hash fetch';
 
@@ -1097,15 +1126,15 @@ This module is very unusual as overloaded modules go: it does not
 provide any usual overloaded operators, instead it provides the L<Last
 Resort> operator C<nomethod>.  In this example the corresponding
 subroutine returns an object which encapsulates operations done over
-the objects: C<new symbolic 3> contains C<['n', 3]>, C<2 + new
-symbolic 3> contains C<['+', 2, ['n', 3]]>.
+the objects: C<< symbolic->new(3) >> contains C<['n', 3]>, C<< 2 +
+symbolic->new(3) >> contains C<['+', 2, ['n', 3]]>.
 
 Here is an example of the script which "calculates" the side of
 circumscribed octagon using the above package:
 
   require symbolic;
   my $iter = 1;			# 2**($iter+2) = 8
-  my $side = new symbolic 1;
+  my $side = symbolic->new(1);
   my $cnt = $iter;
 
   while ($cnt--) {
@@ -1229,8 +1258,8 @@ explicit recursion in num()?  (Answer is at the end of this section.)
 Use this module like this:
 
   require symbolic;
-  my $iter = new symbolic 2;	# 16-gon
-  my $side = new symbolic 1;
+  my $iter = symbolic->new(2);	# 16-gon
+  my $side = symbolic->new(1);
   my $cnt = $iter;
 
   while ($cnt) {
@@ -1350,8 +1379,8 @@ To see it in action, add a method
 
 to the package C<symbolic>.  After this change one can do
 
-  my $a = new symbolic 3;
-  my $b = new symbolic 4;
+  my $a = symbolic->new(3);
+  my $b = symbolic->new(4);
   my $c = sqrt($a**2 + $b**2);
 
 and the numeric value of $c becomes 5.  However, after calling
@@ -1399,6 +1428,11 @@ and $b.
 =head1 AUTHOR
 
 Ilya Zakharevich E<lt>F<ilya@math.mps.ohio-state.edu>E<gt>.
+
+=head1 SEE ALSO
+
+The L<overloading> pragma can be used to enable or disable overloaded
+operations within a lexical scope.
 
 =head1 DIAGNOSTICS
 

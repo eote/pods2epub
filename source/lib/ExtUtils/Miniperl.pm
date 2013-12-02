@@ -24,7 +24,11 @@ $head= <<'EOF!HEAD';
  */
 
 /*
- * "The Road goes ever on and on, down from the door where it began."
+ *      The Road goes ever on and on
+ *          Down from the door where it began.
+ *
+ *     [Bilbo on p.35 of _The Lord of the Rings_, I/i: "A Long-Expected Party"]
+ *     [Frodo on p.73 of _The Lord of the Rings_, I/iii: "Three Is Company"]
  */
 
 /* This file contains the main() function for the perl interpreter.
@@ -49,6 +53,7 @@ $head= <<'EOF!HEAD';
 #include "EXTERN.h"
 #define PERL_IN_MINIPERLMAIN_C
 #include "perl.h"
+#include "XSUB.h"
 
 static void xs_init (pTHX);
 static PerlInterpreter *my_perl;
@@ -57,6 +62,15 @@ static PerlInterpreter *my_perl;
 /* The Atari operating system doesn't have a dynamic stack.  The
    stack size is determined from this value.  */
 long _stksize = 64 * 1024;
+#endif
+
+#if defined(PERL_GLOBAL_STRUCT_PRIVATE)
+/* The static struct perl_vars* may seem counterproductive since the
+ * whole idea PERL_GLOBAL_STRUCT_PRIVATE was to avoid statics, but note
+ * that this static is not in the shared perl library, the globals PL_Vars
+ * and PL_VarsPtr will stay away. */
+static struct perl_vars* my_plvarsp;
+struct perl_vars* Perl_GetVarsPrivate(void) { return my_plvarsp; }
 #endif
 
 #ifdef NO_ENV_ARRAY_IN_MAIN
@@ -68,23 +82,18 @@ int
 main(int argc, char **argv, char **env)
 #endif
 {
+    dVAR;
     int exitstatus;
+#ifdef PERL_GLOBAL_STRUCT
+    struct perl_vars *plvarsp = init_global_struct();
+#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
+    my_vars = my_plvarsp = plvarsp;
+#  endif
+#endif /* PERL_GLOBAL_STRUCT */
     (void)env;
 #ifndef PERL_USE_SAFE_PUTENV
     PL_use_safe_putenv = 0;
 #endif /* PERL_USE_SAFE_PUTENV */
-
-#ifdef PERL_GLOBAL_STRUCT
-#define PERLVAR(var,type) /**/
-#define PERLVARA(var,type) /**/
-#define PERLVARI(var,type,init) PL_Vars.var = init;
-#define PERLVARIC(var,type,init) PL_Vars.var = init;
-#include "perlvars.h"
-#undef PERLVAR
-#undef PERLVARA
-#undef PERLVARI
-#undef PERLVARIC
-#endif
 
     /* if user wants control of gprof profiling off by default */
     /* noop unless Configure is given -Accflags=-DPERL_GPROF_CONTROL */
@@ -96,7 +105,7 @@ main(int argc, char **argv, char **env)
     PERL_SYS_INIT3(&argc,&argv,&env);
 #endif
 
-#if defined(USE_5005THREADS) || defined(USE_ITHREADS)
+#if defined(USE_ITHREADS)
     /* XXX Ideally, this should really be happening in perl_alloc() or
      * perl_construct() to keep libperl.a transparently fork()-safe.
      * It is currently done here only because Apache/mod_perl have
@@ -139,6 +148,10 @@ main(int argc, char **argv, char **env)
      */
     environ = env;
 #endif
+
+#ifdef PERL_GLOBAL_STRUCT
+    free_global_struct(plvarsp);
+#endif /* PERL_GLOBAL_STRUCT */
 
     PERL_SYS_TERM();
 
@@ -183,11 +196,12 @@ sub writemain{
         print "EXTERN_C void boot_${cname} (pTHX_ CV* cv);\n";
     }
 
-    my ($tail1,$tail2) = ( $tail =~ /\A(.*\n)(\s*\}.*)\Z/s );
-    print $tail1;
+    my ($tail1,$tail2,$tail3) = ( $tail =~ /\A(.*{\s*\n)(.*\n)(\s*\}.*)\Z/s );
 
+    print $tail1;
     print "\tconst char file[] = __FILE__;\n";
     print "\tdXSUB_SYS;\n" if $] > 5.002;
+    print $tail2;
 
     foreach $_ (@exts){
 	my($pname) = canon('/', $_);
@@ -207,7 +221,7 @@ sub writemain{
 	}
 	print "\t}\n";
     }
-    print $tail2;
+    print $tail3;
 }
 
 sub canon{

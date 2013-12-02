@@ -3,7 +3,7 @@ use 5.006;
 use strict;
 use warnings;
 use warnings::register;
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 require Exporter;
 require Cwd;
 
@@ -78,7 +78,8 @@ Here are the possible keys for the hash:
 =item C<wanted>
 
 The value should be a code reference.  This code reference is
-described in L<The wanted function> below.
+described in L<The wanted function> below. The C<&wanted> subroutine is
+mandatory.
 
 =item C<bydepth>
 
@@ -410,6 +411,10 @@ File::Find used to produce incorrect results if called recursively.
 During the development of perl 5.8 this bug was fixed.
 The first fixed version of File::Find was 1.01.
 
+=head1 SEE ALSO
+
+find, find2perl.
+
 =cut
 
 our @ISA = qw(Exporter);
@@ -603,6 +608,20 @@ sub _find_opt {
     local *_ = \my $a;
 
     my $cwd            = $wanted->{bydepth} ? Cwd::fastcwd() : Cwd::getcwd();
+    if ($Is_VMS) {
+	# VMS returns this by default in VMS format which just doesn't
+	# work for the rest of this module.
+	$cwd = VMS::Filespec::unixpath($cwd);
+
+	# Apparently this is not expected to have a trailing space.
+	# To attempt to make VMS/UNIX conversions mostly reversable,
+	# a trailing slash is needed.  The run-time functions ignore the
+	# resulting double slash, but it causes the perl tests to fail.
+        $cwd =~ s#/\z##;
+
+	# This comes up in upper case now, but should be lower.
+	# In the future this could be exact case, no need to change.
+    }
     my $cwd_untainted  = $cwd;
     my $check_t_cwd    = 1;
     $wanted_callback   = $wanted->{wanted};
@@ -670,6 +689,7 @@ sub _find_opt {
 		    $abs_dir = $cwd;
 		}
 		else {  # care about any  ../
+		    $top_item =~ s/\.dir\z//i if $Is_VMS;
 		    $abs_dir = contract_name("$cwd/",$top_item);
 		}
 	    }
@@ -686,6 +706,7 @@ sub _find_opt {
 	    }
 
 	    if (-d _) {
+		$top_item =~ s/\.dir\z//i if $Is_VMS;
 		_find_dir_symlnk($wanted, $abs_dir, $top_item);
 		$Is_Dir= 1;
 	    }
@@ -781,6 +802,14 @@ sub _find_dir($$$) {
     } elsif ($^O eq 'MSWin32') {
 	$dir_pref = ($p_dir =~ m|\w:/?$| ? $p_dir : "$p_dir/" );
     } elsif ($^O eq 'VMS') {
+
+	#	VMS is returning trailing .dir on directories
+	#	and trailing . on files and symbolic links
+	#	in UNIX syntax.
+	#
+
+	$p_dir =~ s/\.(dir)?$//i unless $p_dir eq '.';
+
 	$dir_pref = ($p_dir =~ m/[\]>]+$/ ? $p_dir : "$p_dir/" );
     }
     else {
@@ -882,6 +911,14 @@ sub _find_dir($$$) {
 	if ($nlink == 2 && !$no_nlink) {
 	    # This dir has no subdirectories.
 	    for my $FN (@filenames) {
+		if ($Is_VMS) {
+		# Big hammer here - Compensate for VMS trailing . and .dir
+		# No win situation until this is changed, but this
+		# will handle the majority of the cases with breaking the fewest
+
+		    $FN =~ s/\.dir\z//i;
+		    $FN =~ s#\.$## if ($FN ne '.');
+		}
 		next if $FN =~ $File::Find::skip_pattern;
 		
 		$name = $dir_pref . $FN; # $File::Find::name
@@ -1128,6 +1165,14 @@ sub _find_dir_symlnk($$$) {
 	closedir(DIR);
 
 	for my $FN (@filenames) {
+	    if ($Is_VMS) {
+	    # Big hammer here - Compensate for VMS trailing . and .dir
+	    # No win situation until this is changed, but this
+	    # will handle the majority of the cases with breaking the fewest.
+
+		$FN =~ s/\.dir\z//i;
+		$FN =~ s#\.$## if ($FN ne '.');
+	    }
 	    next if $FN =~ $File::Find::skip_pattern;
 
 	    # follow symbolic links / do an lstat
@@ -1151,6 +1196,12 @@ sub _find_dir_symlnk($$$) {
 	    }
 
 	    if (-d _) {
+		if ($Is_VMS) {
+		    $FN =~ s/\.dir\z//i;
+		    $FN =~ s#\.$## if ($FN ne '.');
+		    $new_loc =~ s/\.dir\z//i;
+		    $new_loc =~ s#\.$## if ($new_loc ne '.');
+		}
 		push @Stack,[$new_loc,$updir_loc,$dir_name,$FN,1];
 	    }
 	    else {
@@ -1220,6 +1271,9 @@ sub _find_dir_symlnk($$$) {
 sub wrap_wanted {
     my $wanted = shift;
     if ( ref($wanted) eq 'HASH' ) {
+        unless( exists $wanted->{wanted} and ref( $wanted->{wanted} ) eq 'CODE' ) {
+            die 'no &wanted subroutine given';
+        }
 	if ( $wanted->{follow} || $wanted->{follow_fast}) {
 	    $wanted->{follow_skip} = 1 unless defined $wanted->{follow_skip};
 	}
@@ -1230,8 +1284,11 @@ sub wrap_wanted {
 	}
 	return $wanted;
     }
-    else {
+    elsif( ref( $wanted ) eq 'CODE' ) {
 	return { wanted => $wanted };
+    }
+    else {
+       die 'no &wanted subroutine given';
     }
 }
 

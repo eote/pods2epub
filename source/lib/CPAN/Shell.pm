@@ -47,7 +47,7 @@ use vars qw(
              "CPAN/Tarzip.pm",
              "CPAN/Version.pm",
             );
-$VERSION = "5.5001";
+$VERSION = "5.5";
 # record the initial timestamp for reload.
 $reload = { map {$INC{$_} ? ($_,(stat $INC{$_})[9]) : ()} @relo };
 @CPAN::Shell::ISA = qw(CPAN::Debug);
@@ -1504,13 +1504,6 @@ sub myprint {
                            );
 }
 
-my %already_printed;
-#-> sub CPAN::Shell::mywarnonce ;
-sub myprintonce {
-    my($self,$what) = @_;
-    $self->myprint($what) unless $already_printed{$what}++;
-}
-
 sub optprint {
     my($self,$category,$what) = @_;
     my $vname = $category . "_verbosity";
@@ -1533,13 +1526,6 @@ sub myexit {
 sub mywarn {
     my($self,$what) = @_;
     $self->print_ornamented($what, $CPAN::Config->{colorize_warn}||'bold red on_white');
-}
-
-my %already_warned;
-#-> sub CPAN::Shell::mywarnonce ;
-sub mywarnonce {
-    my($self,$what) = @_;
-    $self->mywarn($what) unless $already_warned{$what}++;
 }
 
 # only to be used for shell commands

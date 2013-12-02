@@ -17,14 +17,21 @@ use B qw(class main_root main_start main_cv svref_2object opnumber perlstring
 	 OPpCONST_ARYBASE OPpEXISTS_SUB OPpSORT_NUMERIC OPpSORT_INTEGER
 	 OPpSORT_REVERSE OPpSORT_INPLACE OPpSORT_DESCEND OPpITER_REVERSED
 	 SVf_IOK SVf_NOK SVf_ROK SVf_POK SVpad_OUR SVf_FAKE SVs_RMG SVs_SMG
-         CVf_METHOD CVf_LOCKED CVf_LVALUE
+         CVf_METHOD CVf_LVALUE
 	 PMf_KEEP PMf_GLOBAL PMf_CONTINUE PMf_EVAL PMf_ONCE
 	 PMf_MULTILINE PMf_SINGLELINE PMf_FOLD PMf_EXTENDED),
-	 ($] < 5.009 ? 'PMf_SKIPWHITE' : 'RXf_SKIPWHITE');
-$VERSION = 0.87;
+	 ($] < 5.009 ? 'PMf_SKIPWHITE' : 'RXf_SKIPWHITE'),
+	 ($] < 5.011 ? 'CVf_LOCKED' : ());
+$VERSION = 0.89;
 use strict;
 use vars qw/$AUTOLOAD/;
 use warnings ();
+
+BEGIN {
+    # Easiest way to keep this code portable between 5.12.x and 5.10.x looks to
+    # be to fake up a dummy CVf_LOCKED that will never actually be true.
+    *CVf_LOCKED = sub () {0} unless defined &CVf_LOCKED;
+}
 
 # Changes between 0.50 and 0.51:
 # - fixed nulled leave with live enter in sort { }
@@ -1457,8 +1464,7 @@ my %ignored_hints = (
     'open<' => 1,
     'open>' => 1,
     ':'     => 1,
-    'v_string' => 1,
-    );
+);
 
 sub declare_hinthash {
     my ($from, $to, $indent) = @_;
@@ -1584,8 +1590,10 @@ sub unop {
     my $kid;
     if ($op->flags & OPf_KIDS) {
 	$kid = $op->first;
-	if (defined prototype("CORE::$name")
-	   && prototype("CORE::$name") =~ /^;?\*/
+	my $builtinname = $name;
+	$builtinname =~ /^CORE::/ or $builtinname = "CORE::$name";
+	if (defined prototype($builtinname)
+	   && prototype($builtinname) =~ /^;?\*/
 	   && $kid->name eq "rv2gv") {
 	    $kid = $kid->first;
 	}
@@ -2590,6 +2598,12 @@ sub pp_cond_expr {
 	my $newcond = $newop->first;
 	my $newtrue = $newcond->sibling;
 	$false = $newtrue->sibling; # last in chain is OP_AND => no else
+	if ($newcond->name eq "lineseq")
+	{
+	    # lineseq to ensure correct line numbers in elsif()
+	    # Bug #37302 fixed by change #33710.
+	    $newcond = $newcond->first->sibling;
+	}
 	$newcond = $self->deparse($newcond, 1);
 	$newtrue = $self->deparse($newtrue, 0);
 	push @elsifs, "elsif ($newcond) {\n\t$newtrue\n\b}";
@@ -3203,7 +3217,7 @@ sub check_proto {
     # An unbackslashed @ or % gobbles up the rest of the args
     1 while $proto =~ s/(?<!\\)([@%])[^\]]+$/$1/;
     while ($proto) {
-	$proto =~ s/^(\\?[\$\@&%*]|\\\[[\$\@&%*]+\]|;)//;
+	$proto =~ s/^(\\?[\$\@&%*_]|\\\[[\$\@&%*]+\]|;)//;
 	my $chr = $1;
 	if ($chr eq "") {
 	    return "&" if @args;
@@ -3215,7 +3229,7 @@ sub check_proto {
 	} else {
 	    $arg = shift @args;
 	    last unless $arg;
-	    if ($chr eq "\$") {
+	    if ($chr eq "\$" || $chr eq "_") {
 		if (want_scalar $arg) {
 		    push @reals, $self->deparse($arg, 6);
 		} else {
@@ -3621,7 +3635,8 @@ sub const {
     if (class($sv) eq "SPECIAL") {
 	# sv_undef, sv_yes, sv_no
 	return ('undef', '1', $self->maybe_parens("!1", $cx, 21))[$$sv-1];
-    } elsif (class($sv) eq "NULL") {
+    }
+    if (class($sv) eq "NULL") {
        return 'undef';
     }
     # convert a version object into the "v1.2.3" string in its V magic
@@ -3794,7 +3809,7 @@ sub pp_backtick {
     my($op, $cx) = @_;
     # skip pushmark if it exists (readpipe() vs ``)
     my $child = $op->first->sibling->isa('B::NULL')
-	? $op->first->first : $op->first->sibling;
+	? $op->first : $op->first->sibling;
     return single_delim("qx", '`', $self->dq($child));
 }
 
@@ -4057,6 +4072,16 @@ sub pp_trans {
     return "tr" . double_delim($from, $to) . $flags;
 }
 
+sub re_dq_disambiguate {
+    my ($first, $last) = @_;
+    # Disambiguate "${foo}bar", "${foo}{bar}", "${foo}[1]"
+    ($last =~ /^[A-Z\\\^\[\]_?]/ &&
+	$first =~ s/([\$@])\^$/${1}{^}/)  # "${^}W" etc
+	|| ($last =~ /^[{\[\w_]/ &&
+	    $first =~ s/([\$@])([A-Za-z_]\w*)$/${1}{$2}/);
+    return $first . $last;
+}
+
 # Like dq(), but different
 sub re_dq {
     my $self = shift;
@@ -4072,14 +4097,7 @@ sub re_dq {
     } elsif ($type eq "concat") {
 	my $first = $self->re_dq($op->first, $extended);
 	my $last  = $self->re_dq($op->last,  $extended);
-
-	# Disambiguate "${foo}bar", "${foo}{bar}", "${foo}[1]"
-	($last =~ /^[A-Z\\\^\[\]_?]/ &&
-	    $first =~ s/([\$@])\^$/${1}{^}/)  # "${^}W" etc
-	    || ($last =~ /^[{\[\w_]/ &&
-		$first =~ s/([\$@])([A-Za-z_]\w*)$/${1}{$2}/);
-
-	return $first . $last;
+	return re_dq_disambiguate($first, $last);
     } elsif ($type eq "uc") {
 	return '\U' . $self->re_dq($op->first->sibling, $extended) . '\E';
     } elsif ($type eq "lc") {
@@ -4151,7 +4169,9 @@ sub regcomp {
 	my $str = '';
 	$kid = $kid->first->sibling;
 	while (!null($kid)) {
-	    $str .= $self->re_dq($kid, $extended);
+	    my $first = $str;
+	    my $last = $self->re_dq($kid, $extended);
+	    $str = re_dq_disambiguate($first, $last);
 	    $kid = $kid->sibling;
 	}
 	return $str, 1;
@@ -4792,6 +4812,8 @@ dual-valued scalars correctly, as in:
 
     use constant E2BIG => ($!=7); $y = E2BIG; print $y, 0+$y;
 
+    use constant H => { "#" => 1 }; H->{"#"};
+
 =item *
 
 An input file that uses source filtering probably won't be deparsed into
@@ -4807,6 +4829,10 @@ have a compile-time side-effect, such as the obscure
     my $x if 0;
 
 which is not, consequently, deparsed correctly.
+
+    foreach my $i (@_) { 0 }
+  =>
+    foreach my $i (@_) { '???' }
 
 =item *
 

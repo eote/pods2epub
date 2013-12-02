@@ -1,8 +1,5 @@
 package CGI::Cookie;
 
-use strict;
-use warnings;
-
 # See the bottom of this file for the POD documentation.  Search for the
 # string '=head'.
 
@@ -81,13 +78,14 @@ sub get_raw_cookie {
   $r ||= eval { $MOD_PERL == 2                    ? 
                   Apache2::RequestUtil->request() :
                   Apache->request } if $MOD_PERL;
-
-  return $r->headers_in->{'Cookie'} if $r;
-
-  die "Run $r->subprocess_env; before calling fetch()" 
-    if $MOD_PERL and !exists $ENV{REQUEST_METHOD};
-    
-  return $ENV{HTTP_COOKIE} || $ENV{COOKIE};
+  if ($r) {
+    $raw_cookie = $r->headers_in->{'Cookie'};
+  } else {
+    if ($MOD_PERL && !exists $ENV{REQUEST_METHOD}) {
+      die "Run $r->subprocess_env; before calling fetch()";
+    }
+    $raw_cookie = $ENV{HTTP_COOKIE} || $ENV{COOKIE};
+  }
 }
 
 
@@ -124,8 +122,7 @@ sub new {
   shift if ref $_[0]
         && eval { $_[0]->isa('Apache::Request::Req') || $_[0]->isa('Apache') };
   my($name,$value,$path,$domain,$secure,$expires,$httponly) =
-    rearrange([ 'NAME', ['VALUE','VALUES'], qw/ PATH DOMAIN SECURE EXPIRES
-        HTTPONLY / ], @_);
+    rearrange([NAME,[VALUE,VALUES],PATH,DOMAIN,SECURE,EXPIRES,HTTPONLY],@_);
   
   # Pull out our parameters.
   my @values;

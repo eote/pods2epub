@@ -5,7 +5,7 @@ use warnings;
 use if $] >= 5.011, 'deprecate';
 use Pod::Parser;
 our @ISA = qw(Pod::Parser);
-our $VERSION = '1.02';
+our $VERSION = '1.01';
 
 our %E = qw( < lt > gt );
  
@@ -81,7 +81,7 @@ None by default.
 
 =head1 AUTHOR
 
-Robin Barker, rmbarker@cpan.org
+Robin Barker, rmb1@npl.co.uk
 
 =head1 SEE ALSO
 
@@ -97,4 +97,4 @@ at your option, any later version of Perl 5 you may have available.
 
 =cut
 
-$Id: Plainer.pm 253 2010-02-11 16:28:10Z rmb1 $
+$Id: Plainer.pm 250 2009-09-20 18:02:00Z rmb1 $

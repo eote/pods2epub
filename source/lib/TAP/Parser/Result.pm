@@ -26,15 +26,15 @@ TAP::Parser::Result - Base class for TAP::Parser output objects
 
 =head1 VERSION
 
-Version 3.20
+Version 3.23
 
 =cut
 
-$VERSION = '3.20';
+$VERSION = '3.23';
 
 =head1 SYNOPSIS
 
-  # abstract class - not meany to be used directly
+  # abstract class - not meant to be used directly
   # see TAP::Parser::ResultFactory for preferred usage
 
   # directly:

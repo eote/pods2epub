@@ -260,7 +260,7 @@ X<av_len>
 Returns the highest index in the array.  The number of elements in the
 array is C<av_len(av) + 1>.  Returns -1 if the array is empty.
 
-	I32	av_len(const AV *av)
+	I32	av_len(AV *av)
 
 =for hackers
 Found in file av.c
@@ -546,7 +546,7 @@ Found in file handy.h
 =item isALPHA
 X<isALPHA>
 
-Returns a boolean indicating whether the C C<char> is a US-ASCII (Basic Latin) 
+Returns a boolean indicating whether the C C<char> is a US-ASCII (Basic Latin)
 alphabetic character.
 
 	bool	isALPHA(char ch)
@@ -1308,6 +1308,90 @@ Found in file pp_pack.c
 
 =back
 
+=head1 Functions in file pp_sys.c
+
+
+=over 8
+
+=item setdefout
+X<setdefout>
+
+Sets PL_defoutgv, the default file handle for output, to the passed in
+typeglob. As PL_defoutgv "owns" a reference on its typeglob, the reference
+count of the passed in typeglob is increased by one, and the reference count
+of the typeglob that PL_defoutgv points to is decreased by one.
+
+	void	setdefout(GV* gv)
+
+=for hackers
+Found in file pp_sys.c
+
+
+=back
+
+=head1 Global Variables
+
+=over 8
+
+=item PL_keyword_plugin
+X<PL_keyword_plugin>
+
+Function pointer, pointing at a function used to handle extended keywords.
+The function should be declared as
+
+	int keyword_plugin_function(pTHX_
+		char *keyword_ptr, STRLEN keyword_len,
+		OP **op_ptr)
+
+The function is called from the tokeniser, whenever a possible keyword
+is seen.  C<keyword_ptr> points at the word in the parser's input
+buffer, and C<keyword_len> gives its length; it is not null-terminated.
+The function is expected to examine the word, and possibly other state
+such as L<%^H|perlvar/%^H>, to decide whether it wants to handle it
+as an extended keyword.  If it does not, the function should return
+C<KEYWORD_PLUGIN_DECLINE>, and the normal parser process will continue.
+
+If the function wants to handle the keyword, it first must
+parse anything following the keyword that is part of the syntax
+introduced by the keyword.  See L</Lexer interface> for details.
+
+When a keyword is being handled, the plugin function must build
+a tree of C<OP> structures, representing the code that was parsed.
+The root of the tree must be stored in C<*op_ptr>.  The function then
+returns a contant indicating the syntactic role of the construct that
+it has parsed: C<KEYWORD_PLUGIN_STMT> if it is a complete statement, or
+C<KEYWORD_PLUGIN_EXPR> if it is an expression.  Note that a statement
+construct cannot be used inside an expression (except via C<do BLOCK>
+and similar), and an expression is not a complete statement (it requires
+at least a terminating semicolon).
+
+When a keyword is handled, the plugin function may also have
+(compile-time) side effects.  It may modify C<%^H>, define functions, and
+so on.  Typically, if side effects are the main purpose of a handler,
+it does not wish to generate any ops to be included in the normal
+compilation.  In this case it is still required to supply an op tree,
+but it suffices to generate a single null op.
+
+That's how the C<*PL_keyword_plugin> function needs to behave overall.
+Conventionally, however, one does not completely replace the existing
+handler function.  Instead, take a copy of C<PL_keyword_plugin> before
+assigning your own function pointer to it.  Your handler function should
+look for keywords that it is interested in and handle those.  Where it
+is not interested, it should call the saved plugin function, passing on
+the arguments it received.  Thus C<PL_keyword_plugin> actually points
+at a chain of handler functions, all of which have an opportunity to
+handle keywords, and only the last function in the chain (built into
+the Perl core) will normally return C<KEYWORD_PLUGIN_DECLINE>.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+=for hackers
+Found in file perlvars.h
+
+
+=back
+
 =head1 GV Functions
 
 =over 8
@@ -1462,13 +1546,15 @@ X<Nullav>
 
 Null AV pointer.
 
+(deprecated - use C<(AV *)NULL> instead)
+
 =for hackers
 Found in file av.h
 
 =item Nullch
 X<Nullch>
 
-Null character pointer.
+Null character pointer. (No longer available when C<PERL_CORE> is defined.)
 
 =for hackers
 Found in file handy.h
@@ -1478,6 +1564,8 @@ X<Nullcv>
 
 Null CV pointer.
 
+(deprecated - use C<(CV *)NULL> instead)
+
 =for hackers
 Found in file cv.h
 
@@ -1486,13 +1574,15 @@ X<Nullhv>
 
 Null HV pointer.
 
+(deprecated - use C<(HV *)NULL> instead)
+
 =for hackers
 Found in file hv.h
 
 =item Nullsv
 X<Nullsv>
 
-Null SV pointer.
+Null SV pointer. (No longer available when C<PERL_CORE> is defined.)
 
 =for hackers
 Found in file handy.h
@@ -1630,7 +1720,7 @@ will be 0 or non-0, not necessarily 1 (or even a value with any low bits set),
 so B<do not> blindly assign this to a C<bool> variable, as C<bool> may be a
 typedef for C<char>.
 
-	char*	HeUTF8(HE* he, STRLEN len)
+	char*	HeUTF8(HE* he)
 
 =for hackers
 Found in file hv.h
@@ -1671,7 +1761,7 @@ X<hv_clear>
 
 Clears a hash, making it empty.
 
-	void	hv_clear(HV* hv)
+	void	hv_clear(HV *hv)
 
 =for hackers
 Found in file hv.c
@@ -1995,6 +2085,378 @@ Creates a new HV.  The reference count is set to 1.
 
 =for hackers
 Found in file hv.h
+
+
+=back
+
+=head1 Lexer interface
+
+=over 8
+
+=item lex_bufutf8
+X<lex_bufutf8>
+
+Indicates whether the octets in the lexer buffer
+(L</PL_parser-E<gt>linestr>) should be interpreted as the UTF-8 encoding
+of Unicode characters.  If not, they should be interpreted as Latin-1
+characters.  This is analogous to the C<SvUTF8> flag for scalars.
+
+In UTF-8 mode, it is not guaranteed that the lexer buffer actually
+contains valid UTF-8.  Lexing code must be robust in the face of invalid
+encoding.
+
+The actual C<SvUTF8> flag of the L</PL_parser-E<gt>linestr> scalar
+is significant, but not the whole story regarding the input character
+encoding.  Normally, when a file is being read, the scalar contains octets
+and its C<SvUTF8> flag is off, but the octets should be interpreted as
+UTF-8 if the C<use utf8> pragma is in effect.  During a string eval,
+however, the scalar may have the C<SvUTF8> flag on, and in this case its
+octets should be interpreted as UTF-8 unless the C<use bytes> pragma
+is in effect.  This logic may change in the future; use this function
+instead of implementing the logic yourself.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	bool	lex_bufutf8()
+
+=for hackers
+Found in file toke.c
+
+=item lex_discard_to
+X<lex_discard_to>
+
+Discards the first part of the L</PL_parser-E<gt>linestr> buffer,
+up to I<ptr>.  The remaining content of the buffer will be moved, and
+all pointers into the buffer updated appropriately.  I<ptr> must not
+be later in the buffer than the position of L</PL_parser-E<gt>bufptr>:
+it is not permitted to discard text that has yet to be lexed.
+
+Normally it is not necessarily to do this directly, because it suffices to
+use the implicit discarding behaviour of L</lex_next_chunk> and things
+based on it.  However, if a token stretches across multiple lines,
+and the lexing code has kept multiple lines of text in the buffer fof
+that purpose, then after completion of the token it would be wise to
+explicitly discard the now-unneeded earlier lines, to avoid future
+multi-line tokens growing the buffer without bound.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	void	lex_discard_to(char *ptr)
+
+=for hackers
+Found in file toke.c
+
+=item lex_grow_linestr
+X<lex_grow_linestr>
+
+Reallocates the lexer buffer (L</PL_parser-E<gt>linestr>) to accommodate
+at least I<len> octets (including terminating NUL).  Returns a
+pointer to the reallocated buffer.  This is necessary before making
+any direct modification of the buffer that would increase its length.
+L</lex_stuff_pvn> provides a more convenient way to insert text into
+the buffer.
+
+Do not use C<SvGROW> or C<sv_grow> directly on C<PL_parser-E<gt>linestr>;
+this function updates all of the lexer's variables that point directly
+into the buffer.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	char *	lex_grow_linestr(STRLEN len)
+
+=for hackers
+Found in file toke.c
+
+=item lex_next_chunk
+X<lex_next_chunk>
+
+Reads in the next chunk of text to be lexed, appending it to
+L</PL_parser-E<gt>linestr>.  This should be called when lexing code has
+looked to the end of the current chunk and wants to know more.  It is
+usual, but not necessary, for lexing to have consumed the entirety of
+the current chunk at this time.
+
+If L</PL_parser-E<gt>bufptr> is pointing to the very end of the current
+chunk (i.e., the current chunk has been entirely consumed), normally the
+current chunk will be discarded at the same time that the new chunk is
+read in.  If I<flags> includes C<LEX_KEEP_PREVIOUS>, the current chunk
+will not be discarded.  If the current chunk has not been entirely
+consumed, then it will not be discarded regardless of the flag.
+
+Returns true if some new text was added to the buffer, or false if the
+buffer has reached the end of the input text.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	bool	lex_next_chunk(U32 flags)
+
+=for hackers
+Found in file toke.c
+
+=item lex_peek_unichar
+X<lex_peek_unichar>
+
+Looks ahead one (Unicode) character in the text currently being lexed.
+Returns the codepoint (unsigned integer value) of the next character,
+or -1 if lexing has reached the end of the input text.  To consume the
+peeked character, use L</lex_read_unichar>.
+
+If the next character is in (or extends into) the next chunk of input
+text, the next chunk will be read in.  Normally the current chunk will be
+discarded at the same time, but if I<flags> includes C<LEX_KEEP_PREVIOUS>
+then the current chunk will not be discarded.
+
+If the input is being interpreted as UTF-8 and a UTF-8 encoding error
+is encountered, an exception is generated.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	I32	lex_peek_unichar(U32 flags)
+
+=for hackers
+Found in file toke.c
+
+=item lex_read_space
+X<lex_read_space>
+
+Reads optional spaces, in Perl style, in the text currently being
+lexed.  The spaces may include ordinary whitespace characters and
+Perl-style comments.  C<#line> directives are processed if encountered.
+L</PL_parser-E<gt>bufptr> is moved past the spaces, so that it points
+at a non-space character (or the end of the input text).
+
+If spaces extend into the next chunk of input text, the next chunk will
+be read in.  Normally the current chunk will be discarded at the same
+time, but if I<flags> includes C<LEX_KEEP_PREVIOUS> then the current
+chunk will not be discarded.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	void	lex_read_space(U32 flags)
+
+=for hackers
+Found in file toke.c
+
+=item lex_read_to
+X<lex_read_to>
+
+Consume text in the lexer buffer, from L</PL_parser-E<gt>bufptr> up
+to I<ptr>.  This advances L</PL_parser-E<gt>bufptr> to match I<ptr>,
+performing the correct bookkeeping whenever a newline character is passed.
+This is the normal way to consume lexed text.
+
+Interpretation of the buffer's octets can be abstracted out by
+using the slightly higher-level functions L</lex_peek_unichar> and
+L</lex_read_unichar>.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	void	lex_read_to(char *ptr)
+
+=for hackers
+Found in file toke.c
+
+=item lex_read_unichar
+X<lex_read_unichar>
+
+Reads the next (Unicode) character in the text currently being lexed.
+Returns the codepoint (unsigned integer value) of the character read,
+and moves L</PL_parser-E<gt>bufptr> past the character, or returns -1
+if lexing has reached the end of the input text.  To non-destructively
+examine the next character, use L</lex_peek_unichar> instead.
+
+If the next character is in (or extends into) the next chunk of input
+text, the next chunk will be read in.  Normally the current chunk will be
+discarded at the same time, but if I<flags> includes C<LEX_KEEP_PREVIOUS>
+then the current chunk will not be discarded.
+
+If the input is being interpreted as UTF-8 and a UTF-8 encoding error
+is encountered, an exception is generated.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	I32	lex_read_unichar(U32 flags)
+
+=for hackers
+Found in file toke.c
+
+=item lex_stuff_pvn
+X<lex_stuff_pvn>
+
+Insert characters into the lexer buffer (L</PL_parser-E<gt>linestr>),
+immediately after the current lexing point (L</PL_parser-E<gt>bufptr>),
+reallocating the buffer if necessary.  This means that lexing code that
+runs later will see the characters as if they had appeared in the input.
+It is not recommended to do this as part of normal parsing, and most
+uses of this facility run the risk of the inserted characters being
+interpreted in an unintended manner.
+
+The string to be inserted is represented by I<len> octets starting
+at I<pv>.  These octets are interpreted as either UTF-8 or Latin-1,
+according to whether the C<LEX_STUFF_UTF8> flag is set in I<flags>.
+The characters are recoded for the lexer buffer, according to how the
+buffer is currently being interpreted (L</lex_bufutf8>).  If a string
+to be interpreted is available as a Perl scalar, the L</lex_stuff_sv>
+function is more convenient.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	void	lex_stuff_pvn(char *pv, STRLEN len, U32 flags)
+
+=for hackers
+Found in file toke.c
+
+=item lex_stuff_sv
+X<lex_stuff_sv>
+
+Insert characters into the lexer buffer (L</PL_parser-E<gt>linestr>),
+immediately after the current lexing point (L</PL_parser-E<gt>bufptr>),
+reallocating the buffer if necessary.  This means that lexing code that
+runs later will see the characters as if they had appeared in the input.
+It is not recommended to do this as part of normal parsing, and most
+uses of this facility run the risk of the inserted characters being
+interpreted in an unintended manner.
+
+The string to be inserted is the string value of I<sv>.  The characters
+are recoded for the lexer buffer, according to how the buffer is currently
+being interpreted (L</lex_bufutf8>).  If a string to be interpreted is
+not already a Perl scalar, the L</lex_stuff_pvn> function avoids the
+need to construct a scalar.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	void	lex_stuff_sv(SV *sv, U32 flags)
+
+=for hackers
+Found in file toke.c
+
+=item lex_unstuff
+X<lex_unstuff>
+
+Discards text about to be lexed, from L</PL_parser-E<gt>bufptr> up to
+I<ptr>.  Text following I<ptr> will be moved, and the buffer shortened.
+This hides the discarded text from any lexing code that runs later,
+as if the text had never appeared.
+
+This is not the normal way to consume lexed text.  For that, use
+L</lex_read_to>.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	void	lex_unstuff(char *ptr)
+
+=for hackers
+Found in file toke.c
+
+=item PL_parser
+X<PL_parser>
+
+Pointer to a structure encapsulating the state of the parsing operation
+currently in progress.  The pointer can be locally changed to perform
+a nested parse without interfering with the state of an outer parse.
+Individual members of C<PL_parser> have their own documentation.
+
+=for hackers
+Found in file toke.c
+
+=item PL_parser-E<gt>bufend
+X<PL_parser-E<gt>bufend>
+
+Direct pointer to the end of the chunk of text currently being lexed, the
+end of the lexer buffer.  This is equal to C<SvPVX(PL_parser-E<gt>linestr)
++ SvCUR(PL_parser-E<gt>linestr)>.  A NUL character (zero octet) is
+always located at the end of the buffer, and does not count as part of
+the buffer's contents.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+=for hackers
+Found in file toke.c
+
+=item PL_parser-E<gt>bufptr
+X<PL_parser-E<gt>bufptr>
+
+Points to the current position of lexing inside the lexer buffer.
+Characters around this point may be freely examined, within
+the range delimited by C<SvPVX(L</PL_parser-E<gt>linestr>)> and
+L</PL_parser-E<gt>bufend>.  The octets of the buffer may be intended to be
+interpreted as either UTF-8 or Latin-1, as indicated by L</lex_bufutf8>.
+
+Lexing code (whether in the Perl core or not) moves this pointer past
+the characters that it consumes.  It is also expected to perform some
+bookkeeping whenever a newline character is consumed.  This movement
+can be more conveniently performed by the function L</lex_read_to>,
+which handles newlines appropriately.
+
+Interpretation of the buffer's octets can be abstracted out by
+using the slightly higher-level functions L</lex_peek_unichar> and
+L</lex_read_unichar>.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+=for hackers
+Found in file toke.c
+
+=item PL_parser-E<gt>linestart
+X<PL_parser-E<gt>linestart>
+
+Points to the start of the current line inside the lexer buffer.
+This is useful for indicating at which column an error occurred, and
+not much else.  This must be updated by any lexing code that consumes
+a newline; the function L</lex_read_to> handles this detail.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+=for hackers
+Found in file toke.c
+
+=item PL_parser-E<gt>linestr
+X<PL_parser-E<gt>linestr>
+
+Buffer scalar containing the chunk currently under consideration of the
+text currently being lexed.  This is always a plain string scalar (for
+which C<SvPOK> is true).  It is not intended to be used as a scalar by
+normal scalar means; instead refer to the buffer directly by the pointer
+variables described below.
+
+The lexer maintains various C<char*> pointers to things in the
+C<PL_parser-E<gt>linestr> buffer.  If C<PL_parser-E<gt>linestr> is ever
+reallocated, all of these pointers must be updated.  Don't attempt to
+do this manually, but rather use L</lex_grow_linestr> if you need to
+reallocate the buffer.
+
+The content of the text chunk in the buffer is commonly exactly one
+complete line of input, up to and including a newline terminator,
+but there are situations where it is otherwise.  The octets of the
+buffer may be intended to be interpreted as either UTF-8 or Latin-1.
+The function L</lex_bufutf8> tells you which.  Do not use the C<SvUTF8>
+flag on this scalar, which may disagree with it.
+
+For direct examination of the buffer, the variable
+L</PL_parser-E<gt>bufend> points to the end of the buffer.  The current
+lexing position is pointed to by L</PL_parser-E<gt>bufptr>.  Direct use
+of these pointers is usually preferable to examination of the scalar
+through normal scalar means.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+=for hackers
+Found in file toke.c
 
 
 =back
@@ -2563,6 +3025,14 @@ want to upgrade the SV.
 =for hackers
 Found in file util.c
 
+=item prescan_version
+X<prescan_version>
+
+	const char*	prescan_version(const char *s, bool strict, const char** errstr, bool *sqv, int *ssaw_decimal, int *swidth, bool *salpha)
+
+=for hackers
+Found in file util.c
+
 =item scan_version
 X<scan_version>
 
@@ -3102,7 +3572,7 @@ value returned by the sub.  Otherwise, returns NULL.
 Constant subs can be created with C<newCONSTSUB> or as described in
 L<perlsub/"Constant Functions">.
 
-	SV*	cv_const_sv(CV* cv)
+	SV*	cv_const_sv(const CV *const cv)
 
 =for hackers
 Found in file op.c
@@ -3112,6 +3582,11 @@ X<newCONSTSUB>
 
 Creates a constant sub equivalent to Perl C<sub FOO () { 123 }> which is
 eligible for inlining at compile-time.
+
+Passing NULL for SV creates a constant sub equivalent to C<sub BAR () {}>,
+which won't be called if used as a destructor, but will suppress the overhead
+of a call to C<AUTOLOAD>.  (This form, however, isn't eligible for inlining at
+compile time.)
 
 	CV*	newCONSTSUB(HV* stash, const char* name, SV* sv)
 
@@ -3133,6 +3608,23 @@ Found in file op.c
 =head1 Pad Data Structures
 
 =over 8
+
+=item pad_findmy
+X<pad_findmy>
+
+Given a lexical name, try to find its offset, first in the current pad,
+or failing that, in the pads of any lexically enclosing subs (including
+the complications introduced by eval). If the name is found in an outer pad,
+then a fake entry is added to the current pad.
+Returns the offset in the current pad, or NOT_IN_PAD on failure.
+
+NOTE: this function is experimental and may change or be
+removed without notice.
+
+	PADOFFSET	pad_findmy(const char* name, STRLEN len, U32 flags)
+
+=for hackers
+Found in file pad.c
 
 =item pad_sv
 X<pad_sv>
@@ -3175,6 +3667,20 @@ to either declare a local variable and use that instead or to use the
 C<SvPV_nolen> macro.
 
 	STRLEN	PL_na
+
+=for hackers
+Found in file intrpvar.h
+
+=item PL_opfreehook
+X<PL_opfreehook>
+
+When non-C<NULL>, the function pointed by this variable will be called each time an OP is freed with the corresponding OP as the argument.
+This allows extensions to free any extra attribute they have locally attached to an OP.
+It is also assured to first fire for the parent OP and then for its kids.
+
+When you replace this variable, it is considered a good practice to store the possibly previously installed hook and that you recall it inside your own.
+
+	Perl_ophook_t	PL_opfreehook
 
 =for hackers
 Found in file intrpvar.h
@@ -4435,12 +4941,28 @@ Found in file sv.h
 =item SvOOK
 X<SvOOK>
 
-Returns a U32 indicating whether the SvIVX is a valid offset value for
-the SvPVX.  This hack is used internally to speed up removal of characters
-from the beginning of a SvPV.  When SvOOK is true, then the start of the
-allocated string buffer is really (SvPVX - SvIVX).
+Returns a U32 indicating whether the pointer to the string buffer is offset.
+This hack is used internally to speed up removal of characters from the
+beginning of a SvPV.  When SvOOK is true, then the start of the
+allocated string buffer is actually C<SvOOK_offset()> bytes before SvPVX.
+This offset used to be stored in SvIVX, but is now stored within the spare
+part of the buffer.
 
 	U32	SvOOK(SV* sv)
+
+=for hackers
+Found in file sv.h
+
+=item SvOOK_offset
+X<SvOOK_offset>
+
+Reads into I<len> the offset from SvPVX back to the true start of the
+allocated buffer, which will be non-zero if C<sv_chop> has been used to
+efficiently remove characters from start of the buffer. Implemented as a
+macro, which takes the address of I<len>, which must be of type C<STRLEN>.
+Evaluates I<sv> more than once. Sets I<len> to 0 if C<SvOOK(sv)> is false.
+
+	void	SvOOK_offset(NN SV*sv, STRLEN len)
 
 =for hackers
 Found in file sv.h
@@ -5107,7 +5629,7 @@ Returns a boolean indicating whether the SV is derived from the specified class
 I<at the C level>.  To check derivation at the Perl level, call C<isa()> as a
 normal Perl method.
 
-	bool	sv_derived_from(SV* sv, const char* name)
+	bool	sv_derived_from(SV* sv, const char *const name)
 
 =for hackers
 Found in file universal.c
@@ -5118,7 +5640,7 @@ X<sv_does>
 Returns a boolean indicating whether the SV performs a specific, named role.
 The SV can be a Perl object or the name of a Perl class.
 
-	bool	sv_does(SV* sv, const char* name)
+	bool	sv_does(SV* sv, const char *const name)
 
 =for hackers
 Found in file universal.c
@@ -5167,7 +5689,7 @@ Test if the content of an SV looks like a number (or is a number).
 C<Inf> and C<Infinity> are treated as numbers (so will not issue a
 non-numeric warning), even if your atof() doesn't grok them.
 
-	I32	looks_like_number(SV* sv)
+	I32	looks_like_number(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5178,7 +5700,7 @@ X<newRV_noinc>
 Creates an RV wrapper for an SV.  The reference count for the original
 SV is B<not> incremented.
 
-	SV*	newRV_noinc(SV* sv)
+	SV*	newRV_noinc(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5197,7 +5719,7 @@ This aid has been superseded by a new build option, PERL_MEM_LOG (see
 L<perlhack/PERL_MEM_LOG>).  The older API is still there for use in XS
 modules supporting older perls.
 
-	SV*	newSV(STRLEN len)
+	SV*	newSV(const STRLEN len)
 
 =for hackers
 Found in file sv.c
@@ -5209,7 +5731,7 @@ Creates a new SV from the hash key structure.  It will generate scalars that
 point to the shared string table where possible. Returns a new (undefined)
 SV if the hek is NULL.
 
-	SV*	newSVhek(const HEK *hek)
+	SV*	newSVhek(const HEK *const hek)
 
 =for hackers
 Found in file sv.c
@@ -5220,7 +5742,7 @@ X<newSViv>
 Creates a new SV and copies an integer into it.  The reference count for the
 SV is set to 1.
 
-	SV*	newSViv(IV i)
+	SV*	newSViv(const IV i)
 
 =for hackers
 Found in file sv.c
@@ -5231,7 +5753,7 @@ X<newSVnv>
 Creates a new SV and copies a floating point value into it.
 The reference count for the SV is set to 1.
 
-	SV*	newSVnv(NV n)
+	SV*	newSVnv(const NV n)
 
 =for hackers
 Found in file sv.c
@@ -5243,7 +5765,7 @@ Creates a new SV and copies a string into it.  The reference count for the
 SV is set to 1.  If C<len> is zero, Perl will compute the length using
 strlen().  For efficiency, consider using C<newSVpvn> instead.
 
-	SV*	newSVpv(const char* s, STRLEN len)
+	SV*	newSVpv(const char *const s, const STRLEN len)
 
 =for hackers
 Found in file sv.c
@@ -5254,7 +5776,7 @@ X<newSVpvf>
 Creates a new SV and initializes it with the string formatted like
 C<sprintf>.
 
-	SV*	newSVpvf(const char* pat, ...)
+	SV*	newSVpvf(const char *const pat, ...)
 
 =for hackers
 Found in file sv.c
@@ -5267,7 +5789,7 @@ SV is set to 1.  Note that if C<len> is zero, Perl will create a zero length
 string.  You are responsible for ensuring that the source string is at least
 C<len> bytes long.  If the C<s> argument is NULL the new SV will be undefined.
 
-	SV*	newSVpvn(const char* s, STRLEN len)
+	SV*	newSVpvn(const char *const s, const STRLEN len)
 
 =for hackers
 Found in file sv.c
@@ -5281,13 +5803,14 @@ string.  You are responsible for ensuring that the source string is at least
 C<len> bytes long.  If the C<s> argument is NULL the new SV will be undefined.
 Currently the only flag bits accepted are C<SVf_UTF8> and C<SVs_TEMP>.
 If C<SVs_TEMP> is set, then C<sv2mortal()> is called on the result before
-returning. If C<SVf_UTF8> is set, then it will be set on the new SV.
+returning. If C<SVf_UTF8> is set, C<s> is considered to be in UTF-8 and the
+C<SVf_UTF8> flag will be set on the new SV.
 C<newSVpvn_utf8()> is a convenience wrapper for this function, defined as
 
     #define newSVpvn_utf8(s, len, u)			\
 	newSVpvn_flags((s), (len), (u) ? SVf_UTF8 : 0)
 
-	SV*	newSVpvn_flags(const char* s, STRLEN len, U32 flags)
+	SV*	newSVpvn_flags(const char *const s, const STRLEN len, const U32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5348,7 +5871,7 @@ it will be upgraded to one.  If C<classname> is non-null then the new SV will
 be blessed in the specified package.  The new SV is returned and its
 reference count is 1.
 
-	SV*	newSVrv(SV* rv, const char* classname)
+	SV*	newSVrv(SV *const rv, const char *const classname)
 
 =for hackers
 Found in file sv.c
@@ -5359,7 +5882,7 @@ X<newSVsv>
 Creates a new SV which is an exact duplicate of the original SV.
 (Uses C<sv_setsv>).
 
-	SV*	newSVsv(SV* old)
+	SV*	newSVsv(SV *const old)
 
 =for hackers
 Found in file sv.c
@@ -5370,7 +5893,7 @@ X<newSVuv>
 Creates a new SV and copies an unsigned integer into it.
 The reference count for the SV is set to 1.
 
-	SV*	newSVuv(UV u)
+	SV*	newSVuv(const UV u)
 
 =for hackers
 Found in file sv.c
@@ -5381,7 +5904,7 @@ X<newSV_type>
 Creates a new SV, of the type specified.  The reference count for the new SV
 is set to 1.
 
-	SV*	newSV_type(svtype type)
+	SV*	newSV_type(const svtype type)
 
 =for hackers
 Found in file sv.c
@@ -5392,7 +5915,7 @@ X<sv_2bool>
 This function is only called on magical items, and is only used by
 sv_true() or its macro equivalent.
 
-	bool	sv_2bool(SV* sv)
+	bool	sv_2bool(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5402,9 +5925,9 @@ X<sv_2cv>
 
 Using various gambits, try to get a CV from an SV; in addition, try if
 possible to set C<*st> and C<*gvp> to the stash and GV associated with it.
-The flags in C<lref> are passed to sv_fetchsv.
+The flags in C<lref> are passed to gv_fetchsv.
 
-	CV*	sv_2cv(SV* sv, HV** st, GV** gvp, I32 lref)
+	CV*	sv_2cv(SV* sv, HV **const st, GV **const gvp, const I32 lref)
 
 =for hackers
 Found in file sv.c
@@ -5416,7 +5939,7 @@ Using various gambits, try to get an IO from an SV: the IO slot if its a
 GV; or the recursive result if we're an RV; or the IO slot of the symbol
 named after the PV if we're a string.
 
-	IO*	sv_2io(SV* sv)
+	IO*	sv_2io(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5428,7 +5951,7 @@ Return the integer value of an SV, doing any necessary string
 conversion.  If flags includes SV_GMAGIC, does an mg_get() first.
 Normally used via the C<SvIV(sv)> and C<SvIVx(sv)> macros.
 
-	IV	sv_2iv_flags(SV* sv, I32 flags)
+	IV	sv_2iv_flags(SV *const sv, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5442,7 +5965,7 @@ statement boundaries.  SvTEMP() is turned on which means that the SV's
 string buffer can be "stolen" if this SV is copied. See also C<sv_newmortal>
 and C<sv_mortalcopy>.
 
-	SV*	sv_2mortal(SV* sv)
+	SV*	sv_2mortal(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5454,7 +5977,7 @@ Return the num value of an SV, doing any necessary string or integer
 conversion, magic etc. Normally used via the C<SvNV(sv)> and C<SvNVx(sv)>
 macros.
 
-	NV	sv_2nv(SV* sv)
+	NV	sv_2nv(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5468,7 +5991,7 @@ side-effect.
 
 Usually accessed via the C<SvPVbyte> macro.
 
-	char*	sv_2pvbyte(SV* sv, STRLEN* lp)
+	char*	sv_2pvbyte(SV *const sv, STRLEN *const lp)
 
 =for hackers
 Found in file sv.c
@@ -5481,7 +6004,7 @@ to its length.  May cause the SV to be upgraded to UTF-8 as a side-effect.
 
 Usually accessed via the C<SvPVutf8> macro.
 
-	char*	sv_2pvutf8(SV* sv, STRLEN* lp)
+	char*	sv_2pvutf8(SV *const sv, STRLEN *const lp)
 
 =for hackers
 Found in file sv.c
@@ -5495,7 +6018,7 @@ if necessary.
 Normally invoked via the C<SvPV_flags> macro. C<sv_2pv()> and C<sv_2pv_nomg>
 usually end up here too.
 
-	char*	sv_2pv_flags(SV* sv, STRLEN* lp, I32 flags)
+	char*	sv_2pv_flags(SV *const sv, STRLEN *const lp, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5507,7 +6030,7 @@ Return the unsigned integer value of an SV, doing any necessary string
 conversion.  If flags includes SV_GMAGIC, does an mg_get() first.
 Normally used via the C<SvUV(sv)> and C<SvUVx(sv)> macros.
 
-	UV	sv_2uv_flags(SV* sv, I32 flags)
+	UV	sv_2uv_flags(SV *const sv, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5518,7 +6041,7 @@ X<sv_backoff>
 Remove any string offset. You should normally use the C<SvOOK_off> macro
 wrapper instead.
 
-	int	sv_backoff(SV* sv)
+	int	sv_backoff(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5530,7 +6053,7 @@ Blesses an SV into a specified package.  The SV must be an RV.  The package
 must be designated by its stash (see C<gv_stashpv()>).  The reference count
 of the SV is unaffected.
 
-	SV*	sv_bless(SV* sv, HV* stash)
+	SV*	sv_bless(SV *const sv, HV *const stash)
 
 =for hackers
 Found in file sv.c
@@ -5542,7 +6065,7 @@ Concatenates the string onto the end of the string which is in the SV.
 If the SV has the UTF-8 status set, then the bytes appended should be
 valid UTF-8.  Handles 'get' magic, but not 'set' magic.  See C<sv_catpv_mg>.
 
-	void	sv_catpv(SV* sv, const char* ptr)
+	void	sv_catpv(SV *const sv, const char* ptr)
 
 =for hackers
 Found in file sv.c
@@ -5558,7 +6081,7 @@ upgraded to UTF-8.  Handles 'get' magic, but not 'set' magic.  See
 C<sv_catpvf_mg>. If the original SV was UTF-8, the pattern should be
 valid UTF-8; if the original SV was bytes, the pattern should be too.
 
-	void	sv_catpvf(SV* sv, const char* pat, ...)
+	void	sv_catpvf(SV *const sv, const char *const pat, ...)
 
 =for hackers
 Found in file sv.c
@@ -5568,7 +6091,7 @@ X<sv_catpvf_mg>
 
 Like C<sv_catpvf>, but also handles 'set' magic.
 
-	void	sv_catpvf_mg(SV *sv, const char* pat, ...)
+	void	sv_catpvf_mg(SV *const sv, const char *const pat, ...)
 
 =for hackers
 Found in file sv.c
@@ -5596,7 +6119,7 @@ If C<flags> has C<SV_GMAGIC> bit set, will C<mg_get> on C<dsv> if
 appropriate, else not. C<sv_catpvn> and C<sv_catpvn_nomg> are implemented
 in terms of this function.
 
-	void	sv_catpvn_flags(SV *dstr, const char *sstr, STRLEN len, I32 flags)
+	void	sv_catpvn_flags(SV *const dstr, const char *sstr, const STRLEN len, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5616,7 +6139,7 @@ X<sv_catpv_mg>
 
 Like C<sv_catpv>, but also handles 'set' magic.
 
-	void	sv_catpv_mg(SV *sv, const char *ptr)
+	void	sv_catpv_mg(SV *const sv, const char *const ptr)
 
 =for hackers
 Found in file sv.c
@@ -5641,7 +6164,7 @@ SV C<dsv>.  Modifies C<dsv> but not C<ssv>.  If C<flags> has C<SV_GMAGIC>
 bit set, will C<mg_get> on the SVs if appropriate, else not. C<sv_catsv>
 and C<sv_catsv_nomg> are implemented in terms of this function.
 
-	void	sv_catsv_flags(SV* dsv, SV* ssv, I32 flags)
+	void	sv_catsv_flags(SV *const dsv, SV *const ssv, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5656,7 +6179,7 @@ string. Uses the "OOK hack".
 Beware: after this function returns, C<ptr> and SvPVX_const(sv) may no longer
 refer to the same chunk of data.
 
-	void	sv_chop(SV* sv, const char* ptr)
+	void	sv_chop(SV *const sv, const char *const ptr)
 
 =for hackers
 Found in file sv.c
@@ -5672,7 +6195,7 @@ This function should only be called when REFCNT is zero. Most of the time
 you'll want to call C<sv_free()> (or its macro wrapper C<SvREFCNT_dec>)
 instead.
 
-	void	sv_clear(SV* sv)
+	void	sv_clear(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5685,7 +6208,7 @@ string in C<sv1> is less than, equal to, or greater than the string in
 C<sv2>. Is UTF-8 and 'use bytes' aware, handles get magic, and will
 coerce its args to strings if necessary.  See also C<sv_cmp_locale>.
 
-	I32	sv_cmp(SV* sv1, SV* sv2)
+	I32	sv_cmp(SV *const sv1, SV *const sv2)
 
 =for hackers
 Found in file sv.c
@@ -5697,7 +6220,7 @@ Compares the strings in two SVs in a locale-aware manner. Is UTF-8 and
 'use bytes' aware, handles get magic, and will coerce its args to strings
 if necessary.  See also C<sv_cmp>.
 
-	I32	sv_cmp_locale(SV* sv1, SV* sv2)
+	I32	sv_cmp_locale(SV *const sv1, SV *const sv2)
 
 =for hackers
 Found in file sv.c
@@ -5712,7 +6235,7 @@ scalar data of the variable, but transformed to such a format that a normal
 memory comparison can be used to compare the data according to the locale
 settings.
 
-	char*	sv_collxfrm(SV* sv, STRLEN* nxp)
+	char*	sv_collxfrm(SV *const sv, STRLEN *const nxp)
 
 =for hackers
 Found in file sv.c
@@ -5728,7 +6251,7 @@ sv_2pv[_flags] but operates directly on an SV instead of just the
 string.  Mostly uses sv_2pv_flags to do its work, except when that
 would lose the UTF-8'ness of the PV.
 
-	void	sv_copypv(SV* dsv, SV* ssv)
+	void	sv_copypv(SV *const dsv, SV *const ssv)
 
 =for hackers
 Found in file sv.c
@@ -5739,7 +6262,7 @@ X<sv_dec>
 Auto-decrement of the value in the SV, doing string to numeric conversion
 if necessary. Handles 'get' magic.
 
-	void	sv_dec(SV* sv)
+	void	sv_dec(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5769,7 +6292,7 @@ set to some other value.) In addition, the C<flags> parameter gets passed to
 C<sv_unref_flags()> when unrefing. C<sv_force_normal> calls this function
 with flags set to 0.
 
-	void	sv_force_normal_flags(SV *sv, U32 flags)
+	void	sv_force_normal_flags(SV *const sv, const U32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5782,7 +6305,7 @@ C<sv_clear> to invoke destructors and free up any memory used by
 the body; finally, deallocate the SV's head itself.
 Normally called via a wrapper macro C<SvREFCNT_dec>.
 
-	void	sv_free(SV* sv)
+	void	sv_free(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5793,7 +6316,7 @@ X<sv_gets>
 Get a line from the filehandle and store it into the SV, optionally
 appending to the currently-stored string.
 
-	char*	sv_gets(SV* sv, PerlIO* fp, I32 append)
+	char*	sv_gets(SV *const sv, PerlIO *const fp, I32 append)
 
 =for hackers
 Found in file sv.c
@@ -5805,7 +6328,7 @@ Expands the character buffer in the SV.  If necessary, uses C<sv_unref> and
 upgrades the SV to C<SVt_PV>.  Returns a pointer to the character buffer.
 Use the C<SvGROW> wrapper instead.
 
-	char*	sv_grow(SV* sv, STRLEN newlen)
+	char*	sv_grow(SV *const sv, STRLEN newlen)
 
 =for hackers
 Found in file sv.c
@@ -5816,7 +6339,7 @@ X<sv_inc>
 Auto-increment of the value in the SV, doing string to numeric conversion
 if necessary. Handles 'get' magic.
 
-	void	sv_inc(SV* sv)
+	void	sv_inc(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5827,7 +6350,7 @@ X<sv_insert>
 Inserts a string at the specified offset/length within the SV. Similar to
 the Perl substr() function. Handles get magic.
 
-	void	sv_insert(SV *bigstr, STRLEN offset, STRLEN len, const char *little, STRLEN littlelen)
+	void	sv_insert(SV *const bigstr, const STRLEN offset, const STRLEN len, const char *const little, const STRLEN littlelen)
 
 =for hackers
 Found in file sv.c
@@ -5849,7 +6372,7 @@ Returns a boolean indicating whether the SV is blessed into the specified
 class.  This does not check for subtypes; use C<sv_derived_from> to verify
 an inheritance relationship.
 
-	int	sv_isa(SV* sv, const char* name)
+	int	sv_isa(SV* sv, const char *const name)
 
 =for hackers
 Found in file sv.c
@@ -5872,7 +6395,7 @@ X<sv_len>
 Returns the length of the string in the SV. Handles magic and type
 coercion.  See also C<SvCUR>, which gives raw access to the xpv_cur slot.
 
-	STRLEN	sv_len(SV* sv)
+	STRLEN	sv_len(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5883,7 +6406,7 @@ X<sv_len_utf8>
 Returns the number of characters in the string in an SV, counting wide
 UTF-8 bytes as a single character. Handles magic and type coercion.
 
-	STRLEN	sv_len_utf8(SV* sv)
+	STRLEN	sv_len_utf8(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5900,7 +6423,7 @@ handling of the C<name> and C<namlen> arguments.
 You need to use C<sv_magicext> to add magic to SvREADONLY SVs and also
 to add more than one instance of the same 'how'.
 
-	void	sv_magic(SV* sv, SV* obj, int how, const char* name, I32 namlen)
+	void	sv_magic(SV *const sv, SV *const obj, const int how, const char *const name, const I32 namlen)
 
 =for hackers
 Found in file sv.c
@@ -5922,7 +6445,7 @@ to contain an C<SV*> and is stored as-is with its REFCNT incremented.
 
 (This is now used as a subroutine by C<sv_magic>.)
 
-	MAGIC *	sv_magicext(SV* sv, SV* obj, int how, const MGVTBL *vtbl, const char* name, I32 namlen)
+	MAGIC *	sv_magicext(SV *const sv, SV *const obj, const int how, const MGVTBL *const vtbl, const char *const name, const I32 namlen)
 
 =for hackers
 Found in file sv.c
@@ -5935,7 +6458,7 @@ The new SV is marked as mortal. It will be destroyed "soon", either by an
 explicit call to FREETMPS, or by an implicit call at places such as
 statement boundaries.  See also C<sv_newmortal> and C<sv_2mortal>.
 
-	SV*	sv_mortalcopy(SV* oldsv)
+	SV*	sv_mortalcopy(SV *const oldsv)
 
 =for hackers
 Found in file sv.c
@@ -5959,7 +6482,7 @@ X<sv_newref>
 Increment an SV's reference count. Use the C<SvREFCNT_inc()> wrapper
 instead.
 
-	SV*	sv_newref(SV* sv)
+	SV*	sv_newref(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -5971,7 +6494,7 @@ Converts the value pointed to by offsetp from a count of bytes from the
 start of the string, to a count of the equivalent number of UTF-8 chars.
 Handles magic and type coercion.
 
-	void	sv_pos_b2u(SV* sv, I32* offsetp)
+	void	sv_pos_b2u(SV *const sv, I32 *const offsetp)
 
 =for hackers
 Found in file sv.c
@@ -5985,7 +6508,25 @@ lenp is non-zero, it does the same to lenp, but this time starting from
 the offset, rather than from the start of the string. Handles magic and
 type coercion.
 
-	void	sv_pos_u2b(SV* sv, I32* offsetp, I32* lenp)
+Use C<sv_pos_u2b_flags> in preference, which correctly handles strings longer
+than 2Gb.
+
+	void	sv_pos_u2b(SV *const sv, I32 *const offsetp, I32 *const lenp)
+
+=for hackers
+Found in file sv.c
+
+=item sv_pos_u2b_flags
+X<sv_pos_u2b_flags>
+
+Converts the value pointed to by offsetp from a count of UTF-8 chars from
+the start of the string, to a count of the equivalent number of bytes; if
+lenp is non-zero, it does the same to lenp, but this time starting from
+the offset, rather than from the start of the string. Handles type coercion.
+I<flags> is passed to C<SvPV_flags>, and usually should be
+C<SV_GMAGIC|SV_CONST_RETURN> to handle magic.
+
+	STRLEN	sv_pos_u2b_flags(SV *const sv, STRLEN uoffset, STRLEN *const lenp, U32 flags)
 
 =for hackers
 Found in file sv.c
@@ -5995,7 +6536,7 @@ X<sv_pvbyten_force>
 
 The backend for the C<SvPVbytex_force> macro. Always use the macro instead.
 
-	char*	sv_pvbyten_force(SV* sv, STRLEN* lp)
+	char*	sv_pvbyten_force(SV *const sv, STRLEN *const lp)
 
 =for hackers
 Found in file sv.c
@@ -6022,7 +6563,7 @@ implemented in terms of this function.
 You normally want to use the various wrapper macros instead: see
 C<SvPV_force> and C<SvPV_force_nomg>
 
-	char*	sv_pvn_force_flags(SV* sv, STRLEN* lp, I32 flags)
+	char*	sv_pvn_force_flags(SV *const sv, STRLEN *const lp, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -6032,7 +6573,7 @@ X<sv_pvutf8n_force>
 
 The backend for the C<SvPVutf8x_force> macro. Always use the macro instead.
 
-	char*	sv_pvutf8n_force(SV* sv, STRLEN* lp)
+	char*	sv_pvutf8n_force(SV *const sv, STRLEN *const lp)
 
 =for hackers
 Found in file sv.c
@@ -6042,7 +6583,7 @@ X<sv_reftype>
 
 Returns a string describing what the SV is a reference to.
 
-	const char*	sv_reftype(const SV* sv, int ob)
+	const char*	sv_reftype(const SV *const sv, const int ob)
 
 =for hackers
 Found in file sv.c
@@ -6057,7 +6598,7 @@ and any magic in the source is discarded.
 Note that this is a rather specialist SV copying operation; most of the
 time you'll want to use C<sv_setsv> or one of its many macro front-ends.
 
-	void	sv_replace(SV* sv, SV* nsv)
+	void	sv_replace(SV *const sv, SV *const nsv)
 
 =for hackers
 Found in file sv.c
@@ -6068,7 +6609,7 @@ X<sv_reset>
 Underlying implementation for the C<reset> Perl function.
 Note that the perl-level function is vaguely deprecated.
 
-	void	sv_reset(const char* s, HV* stash)
+	void	sv_reset(const char* s, HV *const stash)
 
 =for hackers
 Found in file sv.c
@@ -6082,7 +6623,7 @@ push a back-reference to this RV onto the array of backreferences
 associated with that magic. If the RV is magical, set magic will be
 called after the RV is cleared.
 
-	SV*	sv_rvweaken(SV *sv)
+	SV*	sv_rvweaken(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -6093,7 +6634,7 @@ X<sv_setiv>
 Copies an integer into the given SV, upgrading first if necessary.
 Does not handle 'set' magic.  See also C<sv_setiv_mg>.
 
-	void	sv_setiv(SV* sv, IV num)
+	void	sv_setiv(SV *const sv, const IV num)
 
 =for hackers
 Found in file sv.c
@@ -6103,7 +6644,7 @@ X<sv_setiv_mg>
 
 Like C<sv_setiv>, but also handles 'set' magic.
 
-	void	sv_setiv_mg(SV *sv, IV i)
+	void	sv_setiv_mg(SV *const sv, const IV i)
 
 =for hackers
 Found in file sv.c
@@ -6114,7 +6655,7 @@ X<sv_setnv>
 Copies a double into the given SV, upgrading first if necessary.
 Does not handle 'set' magic.  See also C<sv_setnv_mg>.
 
-	void	sv_setnv(SV* sv, NV num)
+	void	sv_setnv(SV *const sv, const NV num)
 
 =for hackers
 Found in file sv.c
@@ -6124,7 +6665,7 @@ X<sv_setnv_mg>
 
 Like C<sv_setnv>, but also handles 'set' magic.
 
-	void	sv_setnv_mg(SV *sv, NV num)
+	void	sv_setnv_mg(SV *const sv, const NV num)
 
 =for hackers
 Found in file sv.c
@@ -6135,7 +6676,7 @@ X<sv_setpv>
 Copies a string into an SV.  The string must be null-terminated.  Does not
 handle 'set' magic.  See C<sv_setpv_mg>.
 
-	void	sv_setpv(SV* sv, const char* ptr)
+	void	sv_setpv(SV *const sv, const char *const ptr)
 
 =for hackers
 Found in file sv.c
@@ -6146,7 +6687,7 @@ X<sv_setpvf>
 Works like C<sv_catpvf> but copies the text into the SV instead of
 appending it.  Does not handle 'set' magic.  See C<sv_setpvf_mg>.
 
-	void	sv_setpvf(SV* sv, const char* pat, ...)
+	void	sv_setpvf(SV *const sv, const char *const pat, ...)
 
 =for hackers
 Found in file sv.c
@@ -6156,7 +6697,7 @@ X<sv_setpvf_mg>
 
 Like C<sv_setpvf>, but also handles 'set' magic.
 
-	void	sv_setpvf_mg(SV *sv, const char* pat, ...)
+	void	sv_setpvf_mg(SV *const sv, const char *const pat, ...)
 
 =for hackers
 Found in file sv.c
@@ -6167,7 +6708,7 @@ X<sv_setpviv>
 Copies an integer into the given SV, also updating its string value.
 Does not handle 'set' magic.  See C<sv_setpviv_mg>.
 
-	void	sv_setpviv(SV* sv, IV num)
+	void	sv_setpviv(SV *const sv, const IV num)
 
 =for hackers
 Found in file sv.c
@@ -6177,7 +6718,7 @@ X<sv_setpviv_mg>
 
 Like C<sv_setpviv>, but also handles 'set' magic.
 
-	void	sv_setpviv_mg(SV *sv, IV iv)
+	void	sv_setpviv_mg(SV *const sv, const IV iv)
 
 =for hackers
 Found in file sv.c
@@ -6189,7 +6730,7 @@ Copies a string into an SV.  The C<len> parameter indicates the number of
 bytes to be copied.  If the C<ptr> argument is NULL the SV will become
 undefined.  Does not handle 'set' magic.  See C<sv_setpvn_mg>.
 
-	void	sv_setpvn(SV* sv, const char* ptr, STRLEN len)
+	void	sv_setpvn(SV *const sv, const char *const ptr, const STRLEN len)
 
 =for hackers
 Found in file sv.c
@@ -6199,7 +6740,7 @@ X<sv_setpvn_mg>
 
 Like C<sv_setpvn>, but also handles 'set' magic.
 
-	void	sv_setpvn_mg(SV *sv, const char *ptr, STRLEN len)
+	void	sv_setpvn_mg(SV *const sv, const char *const ptr, const STRLEN len)
 
 =for hackers
 Found in file sv.c
@@ -6219,7 +6760,7 @@ X<sv_setpv_mg>
 
 Like C<sv_setpv>, but also handles 'set' magic.
 
-	void	sv_setpv_mg(SV *sv, const char *ptr)
+	void	sv_setpv_mg(SV *const sv, const char *const ptr)
 
 =for hackers
 Found in file sv.c
@@ -6233,7 +6774,7 @@ the new SV.  The C<classname> argument indicates the package for the
 blessing.  Set C<classname> to C<NULL> to avoid the blessing.  The new SV
 will have a reference count of 1, and the RV will be returned.
 
-	SV*	sv_setref_iv(SV* rv, const char* classname, IV iv)
+	SV*	sv_setref_iv(SV *const rv, const char *const classname, const IV iv)
 
 =for hackers
 Found in file sv.c
@@ -6247,7 +6788,7 @@ the new SV.  The C<classname> argument indicates the package for the
 blessing.  Set C<classname> to C<NULL> to avoid the blessing.  The new SV
 will have a reference count of 1, and the RV will be returned.
 
-	SV*	sv_setref_nv(SV* rv, const char* classname, NV nv)
+	SV*	sv_setref_nv(SV *const rv, const char *const classname, const NV nv)
 
 =for hackers
 Found in file sv.c
@@ -6267,7 +6808,7 @@ objects will become corrupted by the pointer copy process.
 
 Note that C<sv_setref_pvn> copies the string while this copies the pointer.
 
-	SV*	sv_setref_pv(SV* rv, const char* classname, void* pv)
+	SV*	sv_setref_pv(SV *const rv, const char *const classname, void *const pv)
 
 =for hackers
 Found in file sv.c
@@ -6284,7 +6825,7 @@ of 1, and the RV will be returned.
 
 Note that C<sv_setref_pv> copies the pointer while this copies the string.
 
-	SV*	sv_setref_pvn(SV* rv, const char* classname, const char* pv, STRLEN n)
+	SV*	sv_setref_pvn(SV *const rv, const char *const classname, const char *const pv, const STRLEN n)
 
 =for hackers
 Found in file sv.c
@@ -6298,7 +6839,7 @@ the new SV.  The C<classname> argument indicates the package for the
 blessing.  Set C<classname> to C<NULL> to avoid the blessing.  The new SV
 will have a reference count of 1, and the RV will be returned.
 
-	SV*	sv_setref_uv(SV* rv, const char* classname, UV uv)
+	SV*	sv_setref_uv(SV *const rv, const char *const classname, const UV uv)
 
 =for hackers
 Found in file sv.c
@@ -6341,7 +6882,7 @@ C<SvSetMagicSV_nosteal>.
 This is the primary function for copying scalars, and most other
 copy-ish functions and macros use this underneath.
 
-	void	sv_setsv_flags(SV *dstr, SV *sstr, I32 flags)
+	void	sv_setsv_flags(SV *dstr, SV *sstr, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -6351,7 +6892,7 @@ X<sv_setsv_mg>
 
 Like C<sv_setsv>, but also handles 'set' magic.
 
-	void	sv_setsv_mg(SV *dstr, SV *sstr)
+	void	sv_setsv_mg(SV *const dstr, SV *const sstr)
 
 =for hackers
 Found in file sv.c
@@ -6362,7 +6903,7 @@ X<sv_setuv>
 Copies an unsigned integer into the given SV, upgrading first if necessary.
 Does not handle 'set' magic.  See also C<sv_setuv_mg>.
 
-	void	sv_setuv(SV* sv, UV num)
+	void	sv_setuv(SV *const sv, const UV num)
 
 =for hackers
 Found in file sv.c
@@ -6372,7 +6913,7 @@ X<sv_setuv_mg>
 
 Like C<sv_setuv>, but also handles 'set' magic.
 
-	void	sv_setuv_mg(SV *sv, UV u)
+	void	sv_setuv_mg(SV *const sv, const UV u)
 
 =for hackers
 Found in file sv.c
@@ -6381,7 +6922,7 @@ Found in file sv.c
 X<sv_tainted>
 
 Test an SV for taintedness. Use C<SvTAINTED> instead.
-	bool	sv_tainted(SV* sv)
+	bool	sv_tainted(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -6393,7 +6934,7 @@ Returns true if the SV has a true value by Perl's rules.
 Use the C<SvTRUE> macro instead, which may call C<sv_true()> or may
 instead use an in-line version.
 
-	I32	sv_true(SV *sv)
+	I32	sv_true(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -6403,7 +6944,7 @@ X<sv_unmagic>
 
 Removes all magic of type C<type> from an SV.
 
-	int	sv_unmagic(SV* sv, int type)
+	int	sv_unmagic(SV *const sv, const int type)
 
 =for hackers
 Found in file sv.c
@@ -6419,7 +6960,7 @@ C<SV_IMMEDIATE_UNREF> to force the reference count to be decremented
 different from one or the reference being a readonly SV).
 See C<SvROK_off>.
 
-	void	sv_unref_flags(SV *ref, U32 flags)
+	void	sv_unref_flags(SV *const ref, const U32 flags)
 
 =for hackers
 Found in file sv.c
@@ -6428,7 +6969,7 @@ Found in file sv.c
 X<sv_untaint>
 
 Untaint an SV. Use C<SvTAINTED_off> instead.
-	void	sv_untaint(SV* sv)
+	void	sv_untaint(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -6440,7 +6981,7 @@ Upgrade an SV to a more complex form.  Generally adds a new body type to the
 SV, then copies across as much information as possible from the old body.
 You generally want to use the C<SvUPGRADE> macro wrapper. See also C<svtype>.
 
-	void	sv_upgrade(SV* sv, svtype new_type)
+	void	sv_upgrade(SV *const sv, svtype new_type)
 
 =for hackers
 Found in file sv.c
@@ -6462,7 +7003,7 @@ SV_HAS_TRAILING_NUL is true, then C<ptr[len]> must be NUL, and the realloc
 will be skipped. (i.e. the buffer is actually at least 1 byte longer than
 C<len>, and already meets the requirements for storing in C<SvPVX>)
 
-	void	sv_usepvn_flags(SV* sv, char* ptr, STRLEN len, U32 flags)
+	void	sv_usepvn_flags(SV *const sv, char* ptr, const STRLEN len, const U32 flags)
 
 =for hackers
 Found in file sv.c
@@ -6479,7 +7020,7 @@ Scans PV for validity and returns false if the PV is invalid UTF-8.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	bool	sv_utf8_decode(SV *sv)
+	bool	sv_utf8_decode(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -6499,7 +7040,7 @@ use the Encode extension for that.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	bool	sv_utf8_downgrade(SV *sv, bool fail_ok)
+	bool	sv_utf8_downgrade(SV *const sv, const bool fail_ok)
 
 =for hackers
 Found in file sv.c
@@ -6510,7 +7051,7 @@ X<sv_utf8_encode>
 Converts the PV of an SV to UTF-8, but then turns the C<SvUTF8>
 flag off so that it looks like octets again.
 
-	void	sv_utf8_encode(SV *sv)
+	void	sv_utf8_encode(SV *const sv)
 
 =for hackers
 Found in file sv.c
@@ -6548,7 +7089,7 @@ C<sv_utf8_upgrade_nomg> are implemented in terms of this function.
 This is not as a general purpose byte encoding to Unicode interface:
 use the Encode extension for that.
 
-	STRLEN	sv_utf8_upgrade_flags(SV *sv, I32 flags)
+	STRLEN	sv_utf8_upgrade_flags(SV *const sv, const I32 flags)
 
 =for hackers
 Found in file sv.c
@@ -6571,7 +7112,7 @@ to an SV.  Does not handle 'set' magic.  See C<sv_vcatpvf_mg>.
 
 Usually used via its frontend C<sv_catpvf>.
 
-	void	sv_vcatpvf(SV* sv, const char* pat, va_list* args)
+	void	sv_vcatpvf(SV *const sv, const char *const pat, va_list *const args)
 
 =for hackers
 Found in file sv.c
@@ -6587,7 +7128,7 @@ locales).
 
 Usually used via one of its frontends C<sv_vcatpvf> and C<sv_vcatpvf_mg>.
 
-	void	sv_vcatpvfn(SV* sv, const char* pat, STRLEN patlen, va_list* args, SV** svargs, I32 svmax, bool *maybe_tainted)
+	void	sv_vcatpvfn(SV *const sv, const char *const pat, const STRLEN patlen, va_list *const args, SV **const svargs, const I32 svmax, bool *const maybe_tainted)
 
 =for hackers
 Found in file sv.c
@@ -6599,7 +7140,7 @@ Like C<sv_vcatpvf>, but also handles 'set' magic.
 
 Usually used via its frontend C<sv_catpvf_mg>.
 
-	void	sv_vcatpvf_mg(SV* sv, const char* pat, va_list* args)
+	void	sv_vcatpvf_mg(SV *const sv, const char *const pat, va_list *const args)
 
 =for hackers
 Found in file sv.c
@@ -6612,7 +7153,7 @@ appending it.  Does not handle 'set' magic.  See C<sv_vsetpvf_mg>.
 
 Usually used via its frontend C<sv_setpvf>.
 
-	void	sv_vsetpvf(SV* sv, const char* pat, va_list* args)
+	void	sv_vsetpvf(SV *const sv, const char *const pat, va_list *const args)
 
 =for hackers
 Found in file sv.c
@@ -6625,7 +7166,7 @@ appending it.
 
 Usually used via one of its frontends C<sv_vsetpvf> and C<sv_vsetpvf_mg>.
 
-	void	sv_vsetpvfn(SV* sv, const char* pat, STRLEN patlen, va_list* args, SV** svargs, I32 svmax, bool *maybe_tainted)
+	void	sv_vsetpvfn(SV *const sv, const char *const pat, const STRLEN patlen, va_list *const args, SV **const svargs, const I32 svmax, bool *const maybe_tainted)
 
 =for hackers
 Found in file sv.c
@@ -6637,7 +7178,7 @@ Like C<sv_vsetpvf>, but also handles 'set' magic.
 
 Usually used via its frontend C<sv_setpvf_mg>.
 
-	void	sv_vsetpvf_mg(SV* sv, const char* pat, va_list* args)
+	void	sv_vsetpvf_mg(SV *const sv, const char *const pat, va_list *const args)
 
 =for hackers
 Found in file sv.c
@@ -6718,6 +7259,19 @@ http://www.unicode.org/unicode/reports/tr21/ (Case Mappings).
 =for hackers
 Found in file utf8.c
 
+=item is_ascii_string
+X<is_ascii_string>
+
+Returns true if first C<len> bytes of the given string are ASCII (i.e. none
+of them even raise the question of UTF-8-ness).
+
+See also is_utf8_string(), is_utf8_string_loclen(), and is_utf8_string_loc().
+
+	bool	is_ascii_string(const U8 *s, STRLEN len)
+
+=for hackers
+Found in file utf8.c
+
 =item is_utf8_char
 X<is_utf8_char>
 
@@ -6739,7 +7293,7 @@ UTF-8 string, false otherwise.  Note that 'a valid UTF-8 string' does
 not mean 'a string that contains code points above 0x7F encoded in UTF-8'
 because a valid ASCII string is a valid UTF-8 string.
 
-See also is_utf8_string_loclen() and is_utf8_string_loc().
+See also is_ascii_string(), is_utf8_string_loclen(), and is_utf8_string_loc().
 
 	bool	is_utf8_string(const U8 *s, STRLEN len)
 
@@ -7365,6 +7919,1392 @@ Found in file util.c
 
 =back
 
+=head1 Undocumented functions
+
+These functions are currently undocumented:
+
+=over
+
+=item GetVars
+X<GetVars>
+
+=item Gv_AMupdate
+X<Gv_AMupdate>
+
+=item PerlIO_clearerr
+X<PerlIO_clearerr>
+
+=item PerlIO_close
+X<PerlIO_close>
+
+=item PerlIO_context_layers
+X<PerlIO_context_layers>
+
+=item PerlIO_eof
+X<PerlIO_eof>
+
+=item PerlIO_error
+X<PerlIO_error>
+
+=item PerlIO_fileno
+X<PerlIO_fileno>
+
+=item PerlIO_fill
+X<PerlIO_fill>
+
+=item PerlIO_flush
+X<PerlIO_flush>
+
+=item PerlIO_get_base
+X<PerlIO_get_base>
+
+=item PerlIO_get_bufsiz
+X<PerlIO_get_bufsiz>
+
+=item PerlIO_get_cnt
+X<PerlIO_get_cnt>
+
+=item PerlIO_get_ptr
+X<PerlIO_get_ptr>
+
+=item PerlIO_read
+X<PerlIO_read>
+
+=item PerlIO_seek
+X<PerlIO_seek>
+
+=item PerlIO_set_cnt
+X<PerlIO_set_cnt>
+
+=item PerlIO_set_ptrcnt
+X<PerlIO_set_ptrcnt>
+
+=item PerlIO_setlinebuf
+X<PerlIO_setlinebuf>
+
+=item PerlIO_stderr
+X<PerlIO_stderr>
+
+=item PerlIO_stdin
+X<PerlIO_stdin>
+
+=item PerlIO_stdout
+X<PerlIO_stdout>
+
+=item PerlIO_tell
+X<PerlIO_tell>
+
+=item PerlIO_unread
+X<PerlIO_unread>
+
+=item PerlIO_write
+X<PerlIO_write>
+
+=item Slab_Alloc
+X<Slab_Alloc>
+
+=item Slab_Free
+X<Slab_Free>
+
+=item amagic_call
+X<amagic_call>
+
+=item any_dup
+X<any_dup>
+
+=item apply_attrs_string
+X<apply_attrs_string>
+
+=item atfork_lock
+X<atfork_lock>
+
+=item atfork_unlock
+X<atfork_unlock>
+
+=item av_arylen_p
+X<av_arylen_p>
+
+=item av_iter_p
+X<av_iter_p>
+
+=item block_gimme
+X<block_gimme>
+
+=item call_atexit
+X<call_atexit>
+
+=item call_list
+X<call_list>
+
+=item calloc
+X<calloc>
+
+=item cast_i32
+X<cast_i32>
+
+=item cast_iv
+X<cast_iv>
+
+=item cast_ulong
+X<cast_ulong>
+
+=item cast_uv
+X<cast_uv>
+
+=item ck_warner
+X<ck_warner>
+
+=item ck_warner_d
+X<ck_warner_d>
+
+=item ckwarn
+X<ckwarn>
+
+=item ckwarn_d
+X<ckwarn_d>
+
+=item croak_nocontext
+X<croak_nocontext>
+
+=item csighandler
+X<csighandler>
+
+=item custom_op_desc
+X<custom_op_desc>
+
+=item custom_op_name
+X<custom_op_name>
+
+=item cx_dump
+X<cx_dump>
+
+=item cx_dup
+X<cx_dup>
+
+=item cxinc
+X<cxinc>
+
+=item deb
+X<deb>
+
+=item deb_nocontext
+X<deb_nocontext>
+
+=item debop
+X<debop>
+
+=item debprofdump
+X<debprofdump>
+
+=item debstack
+X<debstack>
+
+=item debstackptrs
+X<debstackptrs>
+
+=item delimcpy
+X<delimcpy>
+
+=item despatch_signals
+X<despatch_signals>
+
+=item die
+X<die>
+
+=item die_nocontext
+X<die_nocontext>
+
+=item dirp_dup
+X<dirp_dup>
+
+=item do_aspawn
+X<do_aspawn>
+
+=item do_binmode
+X<do_binmode>
+
+=item do_close
+X<do_close>
+
+=item do_gv_dump
+X<do_gv_dump>
+
+=item do_gvgv_dump
+X<do_gvgv_dump>
+
+=item do_hv_dump
+X<do_hv_dump>
+
+=item do_join
+X<do_join>
+
+=item do_magic_dump
+X<do_magic_dump>
+
+=item do_op_dump
+X<do_op_dump>
+
+=item do_open
+X<do_open>
+
+=item do_open9
+X<do_open9>
+
+=item do_openn
+X<do_openn>
+
+=item do_pmop_dump
+X<do_pmop_dump>
+
+=item do_spawn
+X<do_spawn>
+
+=item do_spawn_nowait
+X<do_spawn_nowait>
+
+=item do_sprintf
+X<do_sprintf>
+
+=item do_sv_dump
+X<do_sv_dump>
+
+=item doing_taint
+X<doing_taint>
+
+=item doref
+X<doref>
+
+=item dounwind
+X<dounwind>
+
+=item dowantarray
+X<dowantarray>
+
+=item dump_all
+X<dump_all>
+
+=item dump_eval
+X<dump_eval>
+
+=item dump_fds
+X<dump_fds>
+
+=item dump_form
+X<dump_form>
+
+=item dump_indent
+X<dump_indent>
+
+=item dump_mstats
+X<dump_mstats>
+
+=item dump_packsubs
+X<dump_packsubs>
+
+=item dump_sub
+X<dump_sub>
+
+=item dump_vindent
+X<dump_vindent>
+
+=item fetch_cop_label
+X<fetch_cop_label>
+
+=item filter_add
+X<filter_add>
+
+=item filter_del
+X<filter_del>
+
+=item filter_read
+X<filter_read>
+
+=item find_rundefsvoffset
+X<find_rundefsvoffset>
+
+=item form_nocontext
+X<form_nocontext>
+
+=item fp_dup
+X<fp_dup>
+
+=item fprintf_nocontext
+X<fprintf_nocontext>
+
+=item free_global_struct
+X<free_global_struct>
+
+=item free_tmps
+X<free_tmps>
+
+=item get_context
+X<get_context>
+
+=item get_mstats
+X<get_mstats>
+
+=item get_op_descs
+X<get_op_descs>
+
+=item get_op_names
+X<get_op_names>
+
+=item get_ppaddr
+X<get_ppaddr>
+
+=item get_vtbl
+X<get_vtbl>
+
+=item gp_dup
+X<gp_dup>
+
+=item gp_free
+X<gp_free>
+
+=item gp_ref
+X<gp_ref>
+
+=item gv_AVadd
+X<gv_AVadd>
+
+=item gv_HVadd
+X<gv_HVadd>
+
+=item gv_IOadd
+X<gv_IOadd>
+
+=item gv_SVadd
+X<gv_SVadd>
+
+=item gv_add_by_type
+X<gv_add_by_type>
+
+=item gv_autoload4
+X<gv_autoload4>
+
+=item gv_check
+X<gv_check>
+
+=item gv_dump
+X<gv_dump>
+
+=item gv_efullname
+X<gv_efullname>
+
+=item gv_efullname3
+X<gv_efullname3>
+
+=item gv_efullname4
+X<gv_efullname4>
+
+=item gv_fetchfile
+X<gv_fetchfile>
+
+=item gv_fetchfile_flags
+X<gv_fetchfile_flags>
+
+=item gv_fetchmethod_flags
+X<gv_fetchmethod_flags>
+
+=item gv_fetchpv
+X<gv_fetchpv>
+
+=item gv_fetchpvn_flags
+X<gv_fetchpvn_flags>
+
+=item gv_fetchsv
+X<gv_fetchsv>
+
+=item gv_fullname
+X<gv_fullname>
+
+=item gv_fullname3
+X<gv_fullname3>
+
+=item gv_fullname4
+X<gv_fullname4>
+
+=item gv_handler
+X<gv_handler>
+
+=item gv_init
+X<gv_init>
+
+=item gv_name_set
+X<gv_name_set>
+
+=item he_dup
+X<he_dup>
+
+=item hek_dup
+X<hek_dup>
+
+=item hv_common
+X<hv_common>
+
+=item hv_common_key_len
+X<hv_common_key_len>
+
+=item hv_delayfree_ent
+X<hv_delayfree_ent>
+
+=item hv_eiter_p
+X<hv_eiter_p>
+
+=item hv_eiter_set
+X<hv_eiter_set>
+
+=item hv_free_ent
+X<hv_free_ent>
+
+=item hv_ksplit
+X<hv_ksplit>
+
+=item hv_name_set
+X<hv_name_set>
+
+=item hv_placeholders_get
+X<hv_placeholders_get>
+
+=item hv_placeholders_p
+X<hv_placeholders_p>
+
+=item hv_placeholders_set
+X<hv_placeholders_set>
+
+=item hv_riter_p
+X<hv_riter_p>
+
+=item hv_riter_set
+X<hv_riter_set>
+
+=item hv_store_flags
+X<hv_store_flags>
+
+=item ibcmp
+X<ibcmp>
+
+=item ibcmp_locale
+X<ibcmp_locale>
+
+=item init_global_struct
+X<init_global_struct>
+
+=item init_i18nl10n
+X<init_i18nl10n>
+
+=item init_i18nl14n
+X<init_i18nl14n>
+
+=item init_stacks
+X<init_stacks>
+
+=item init_tm
+X<init_tm>
+
+=item instr
+X<instr>
+
+=item is_lvalue_sub
+X<is_lvalue_sub>
+
+=item is_uni_alnum
+X<is_uni_alnum>
+
+=item is_uni_alnum_lc
+X<is_uni_alnum_lc>
+
+=item is_uni_alpha
+X<is_uni_alpha>
+
+=item is_uni_alpha_lc
+X<is_uni_alpha_lc>
+
+=item is_uni_ascii
+X<is_uni_ascii>
+
+=item is_uni_ascii_lc
+X<is_uni_ascii_lc>
+
+=item is_uni_cntrl
+X<is_uni_cntrl>
+
+=item is_uni_cntrl_lc
+X<is_uni_cntrl_lc>
+
+=item is_uni_digit
+X<is_uni_digit>
+
+=item is_uni_digit_lc
+X<is_uni_digit_lc>
+
+=item is_uni_graph
+X<is_uni_graph>
+
+=item is_uni_graph_lc
+X<is_uni_graph_lc>
+
+=item is_uni_idfirst
+X<is_uni_idfirst>
+
+=item is_uni_idfirst_lc
+X<is_uni_idfirst_lc>
+
+=item is_uni_lower
+X<is_uni_lower>
+
+=item is_uni_lower_lc
+X<is_uni_lower_lc>
+
+=item is_uni_print
+X<is_uni_print>
+
+=item is_uni_print_lc
+X<is_uni_print_lc>
+
+=item is_uni_punct
+X<is_uni_punct>
+
+=item is_uni_punct_lc
+X<is_uni_punct_lc>
+
+=item is_uni_space
+X<is_uni_space>
+
+=item is_uni_space_lc
+X<is_uni_space_lc>
+
+=item is_uni_upper
+X<is_uni_upper>
+
+=item is_uni_upper_lc
+X<is_uni_upper_lc>
+
+=item is_uni_xdigit
+X<is_uni_xdigit>
+
+=item is_uni_xdigit_lc
+X<is_uni_xdigit_lc>
+
+=item is_utf8_alnum
+X<is_utf8_alnum>
+
+=item is_utf8_alpha
+X<is_utf8_alpha>
+
+=item is_utf8_ascii
+X<is_utf8_ascii>
+
+=item is_utf8_cntrl
+X<is_utf8_cntrl>
+
+=item is_utf8_digit
+X<is_utf8_digit>
+
+=item is_utf8_graph
+X<is_utf8_graph>
+
+=item is_utf8_idcont
+X<is_utf8_idcont>
+
+=item is_utf8_idfirst
+X<is_utf8_idfirst>
+
+=item is_utf8_lower
+X<is_utf8_lower>
+
+=item is_utf8_mark
+X<is_utf8_mark>
+
+=item is_utf8_perl_space
+X<is_utf8_perl_space>
+
+=item is_utf8_perl_word
+X<is_utf8_perl_word>
+
+=item is_utf8_posix_digit
+X<is_utf8_posix_digit>
+
+=item is_utf8_print
+X<is_utf8_print>
+
+=item is_utf8_punct
+X<is_utf8_punct>
+
+=item is_utf8_space
+X<is_utf8_space>
+
+=item is_utf8_upper
+X<is_utf8_upper>
+
+=item is_utf8_xdigit
+X<is_utf8_xdigit>
+
+=item leave_scope
+X<leave_scope>
+
+=item load_module_nocontext
+X<load_module_nocontext>
+
+=item magic_dump
+X<magic_dump>
+
+=item malloc
+X<malloc>
+
+=item markstack_grow
+X<markstack_grow>
+
+=item mess
+X<mess>
+
+=item mess_nocontext
+X<mess_nocontext>
+
+=item mfree
+X<mfree>
+
+=item mg_dup
+X<mg_dup>
+
+=item mg_size
+X<mg_size>
+
+=item mini_mktime
+X<mini_mktime>
+
+=item moreswitches
+X<moreswitches>
+
+=item mro_get_from_name
+X<mro_get_from_name>
+
+=item mro_get_private_data
+X<mro_get_private_data>
+
+=item mro_register
+X<mro_register>
+
+=item mro_set_mro
+X<mro_set_mro>
+
+=item mro_set_private_data
+X<mro_set_private_data>
+
+=item my_atof
+X<my_atof>
+
+=item my_atof2
+X<my_atof2>
+
+=item my_bcopy
+X<my_bcopy>
+
+=item my_bzero
+X<my_bzero>
+
+=item my_chsize
+X<my_chsize>
+
+=item my_cxt_index
+X<my_cxt_index>
+
+=item my_cxt_init
+X<my_cxt_init>
+
+=item my_dirfd
+X<my_dirfd>
+
+=item my_exit
+X<my_exit>
+
+=item my_failure_exit
+X<my_failure_exit>
+
+=item my_fflush_all
+X<my_fflush_all>
+
+=item my_fork
+X<my_fork>
+
+=item my_htonl
+X<my_htonl>
+
+=item my_lstat
+X<my_lstat>
+
+=item my_memcmp
+X<my_memcmp>
+
+=item my_memset
+X<my_memset>
+
+=item my_ntohl
+X<my_ntohl>
+
+=item my_pclose
+X<my_pclose>
+
+=item my_popen
+X<my_popen>
+
+=item my_popen_list
+X<my_popen_list>
+
+=item my_setenv
+X<my_setenv>
+
+=item my_socketpair
+X<my_socketpair>
+
+=item my_stat
+X<my_stat>
+
+=item my_strftime
+X<my_strftime>
+
+=item my_strlcat
+X<my_strlcat>
+
+=item my_strlcpy
+X<my_strlcpy>
+
+=item my_swap
+X<my_swap>
+
+=item newANONATTRSUB
+X<newANONATTRSUB>
+
+=item newANONHASH
+X<newANONHASH>
+
+=item newANONLIST
+X<newANONLIST>
+
+=item newANONSUB
+X<newANONSUB>
+
+=item newASSIGNOP
+X<newASSIGNOP>
+
+=item newATTRSUB
+X<newATTRSUB>
+
+=item newAVREF
+X<newAVREF>
+
+=item newBINOP
+X<newBINOP>
+
+=item newCONDOP
+X<newCONDOP>
+
+=item newCVREF
+X<newCVREF>
+
+=item newFORM
+X<newFORM>
+
+=item newFOROP
+X<newFOROP>
+
+=item newGIVENOP
+X<newGIVENOP>
+
+=item newGVOP
+X<newGVOP>
+
+=item newGVREF
+X<newGVREF>
+
+=item newGVgen
+X<newGVgen>
+
+=item newHVREF
+X<newHVREF>
+
+=item newHVhv
+X<newHVhv>
+
+=item newIO
+X<newIO>
+
+=item newLISTOP
+X<newLISTOP>
+
+=item newLOGOP
+X<newLOGOP>
+
+=item newLOOPEX
+X<newLOOPEX>
+
+=item newLOOPOP
+X<newLOOPOP>
+
+=item newMYSUB
+X<newMYSUB>
+
+=item newNULLLIST
+X<newNULLLIST>
+
+=item newOP
+X<newOP>
+
+=item newPADOP
+X<newPADOP>
+
+=item newPMOP
+X<newPMOP>
+
+=item newPROG
+X<newPROG>
+
+=item newPVOP
+X<newPVOP>
+
+=item newRANGE
+X<newRANGE>
+
+=item newRV
+X<newRV>
+
+=item newSLICEOP
+X<newSLICEOP>
+
+=item newSTATEOP
+X<newSTATEOP>
+
+=item newSUB
+X<newSUB>
+
+=item newSVOP
+X<newSVOP>
+
+=item newSVREF
+X<newSVREF>
+
+=item newSVpvf_nocontext
+X<newSVpvf_nocontext>
+
+=item newUNOP
+X<newUNOP>
+
+=item newWHENOP
+X<newWHENOP>
+
+=item newWHILEOP
+X<newWHILEOP>
+
+=item newXS_flags
+X<newXS_flags>
+
+=item new_collate
+X<new_collate>
+
+=item new_ctype
+X<new_ctype>
+
+=item new_numeric
+X<new_numeric>
+
+=item new_stackinfo
+X<new_stackinfo>
+
+=item ninstr
+X<ninstr>
+
+=item op_dump
+X<op_dump>
+
+=item op_free
+X<op_free>
+
+=item op_null
+X<op_null>
+
+=item op_refcnt_lock
+X<op_refcnt_lock>
+
+=item op_refcnt_unlock
+X<op_refcnt_unlock>
+
+=item parser_dup
+X<parser_dup>
+
+=item perl_alloc_using
+X<perl_alloc_using>
+
+=item perl_clone_using
+X<perl_clone_using>
+
+=item pmop_dump
+X<pmop_dump>
+
+=item pop_scope
+X<pop_scope>
+
+=item pregcomp
+X<pregcomp>
+
+=item pregexec
+X<pregexec>
+
+=item pregfree
+X<pregfree>
+
+=item pregfree2
+X<pregfree2>
+
+=item printf_nocontext
+X<printf_nocontext>
+
+=item ptr_table_clear
+X<ptr_table_clear>
+
+=item ptr_table_fetch
+X<ptr_table_fetch>
+
+=item ptr_table_free
+X<ptr_table_free>
+
+=item ptr_table_new
+X<ptr_table_new>
+
+=item ptr_table_split
+X<ptr_table_split>
+
+=item ptr_table_store
+X<ptr_table_store>
+
+=item push_scope
+X<push_scope>
+
+=item re_compile
+X<re_compile>
+
+=item re_dup_guts
+X<re_dup_guts>
+
+=item re_intuit_start
+X<re_intuit_start>
+
+=item re_intuit_string
+X<re_intuit_string>
+
+=item realloc
+X<realloc>
+
+=item reentrant_free
+X<reentrant_free>
+
+=item reentrant_init
+X<reentrant_init>
+
+=item reentrant_retry
+X<reentrant_retry>
+
+=item reentrant_size
+X<reentrant_size>
+
+=item ref
+X<ref>
+
+=item reg_named_buff_all
+X<reg_named_buff_all>
+
+=item reg_named_buff_exists
+X<reg_named_buff_exists>
+
+=item reg_named_buff_fetch
+X<reg_named_buff_fetch>
+
+=item reg_named_buff_firstkey
+X<reg_named_buff_firstkey>
+
+=item reg_named_buff_nextkey
+X<reg_named_buff_nextkey>
+
+=item reg_named_buff_scalar
+X<reg_named_buff_scalar>
+
+=item regclass_swash
+X<regclass_swash>
+
+=item regdump
+X<regdump>
+
+=item regdupe_internal
+X<regdupe_internal>
+
+=item regexec_flags
+X<regexec_flags>
+
+=item regfree_internal
+X<regfree_internal>
+
+=item reginitcolors
+X<reginitcolors>
+
+=item regnext
+X<regnext>
+
+=item repeatcpy
+X<repeatcpy>
+
+=item rninstr
+X<rninstr>
+
+=item rsignal
+X<rsignal>
+
+=item rsignal_state
+X<rsignal_state>
+
+=item runops_debug
+X<runops_debug>
+
+=item runops_standard
+X<runops_standard>
+
+=item rvpv_dup
+X<rvpv_dup>
+
+=item safesyscalloc
+X<safesyscalloc>
+
+=item safesysfree
+X<safesysfree>
+
+=item safesysmalloc
+X<safesysmalloc>
+
+=item safesysrealloc
+X<safesysrealloc>
+
+=item save_I16
+X<save_I16>
+
+=item save_I32
+X<save_I32>
+
+=item save_I8
+X<save_I8>
+
+=item save_adelete
+X<save_adelete>
+
+=item save_aelem
+X<save_aelem>
+
+=item save_aelem_flags
+X<save_aelem_flags>
+
+=item save_alloc
+X<save_alloc>
+
+=item save_aptr
+X<save_aptr>
+
+=item save_ary
+X<save_ary>
+
+=item save_bool
+X<save_bool>
+
+=item save_clearsv
+X<save_clearsv>
+
+=item save_delete
+X<save_delete>
+
+=item save_destructor
+X<save_destructor>
+
+=item save_destructor_x
+X<save_destructor_x>
+
+=item save_freepv
+X<save_freepv>
+
+=item save_freesv
+X<save_freesv>
+
+=item save_generic_pvref
+X<save_generic_pvref>
+
+=item save_generic_svref
+X<save_generic_svref>
+
+=item save_gp
+X<save_gp>
+
+=item save_hash
+X<save_hash>
+
+=item save_hdelete
+X<save_hdelete>
+
+=item save_helem
+X<save_helem>
+
+=item save_helem_flags
+X<save_helem_flags>
+
+=item save_hptr
+X<save_hptr>
+
+=item save_int
+X<save_int>
+
+=item save_item
+X<save_item>
+
+=item save_iv
+X<save_iv>
+
+=item save_list
+X<save_list>
+
+=item save_long
+X<save_long>
+
+=item save_mortalizesv
+X<save_mortalizesv>
+
+=item save_nogv
+X<save_nogv>
+
+=item save_padsv_and_mortalize
+X<save_padsv_and_mortalize>
+
+=item save_pptr
+X<save_pptr>
+
+=item save_pushptr
+X<save_pushptr>
+
+=item save_re_context
+X<save_re_context>
+
+=item save_scalar
+X<save_scalar>
+
+=item save_set_svflags
+X<save_set_svflags>
+
+=item save_shared_pvref
+X<save_shared_pvref>
+
+=item save_sptr
+X<save_sptr>
+
+=item save_svref
+X<save_svref>
+
+=item save_vptr
+X<save_vptr>
+
+=item savestack_grow
+X<savestack_grow>
+
+=item savestack_grow_cnt
+X<savestack_grow_cnt>
+
+=item scan_num
+X<scan_num>
+
+=item scan_vstring
+X<scan_vstring>
+
+=item screaminstr
+X<screaminstr>
+
+=item seed
+X<seed>
+
+=item set_context
+X<set_context>
+
+=item set_numeric_local
+X<set_numeric_local>
+
+=item set_numeric_radix
+X<set_numeric_radix>
+
+=item set_numeric_standard
+X<set_numeric_standard>
+
+=item share_hek
+X<share_hek>
+
+=item si_dup
+X<si_dup>
+
+=item ss_dup
+X<ss_dup>
+
+=item stack_grow
+X<stack_grow>
+
+=item start_subparse
+X<start_subparse>
+
+=item stashpv_hvname_match
+X<stashpv_hvname_match>
+
+=item str_to_version
+X<str_to_version>
+
+=item sv_2iv
+X<sv_2iv>
+
+=item sv_2pv
+X<sv_2pv>
+
+=item sv_2uv
+X<sv_2uv>
+
+=item sv_catpvf_mg_nocontext
+X<sv_catpvf_mg_nocontext>
+
+=item sv_catpvf_nocontext
+X<sv_catpvf_nocontext>
+
+=item sv_compile_2op
+X<sv_compile_2op>
+
+=item sv_dump
+X<sv_dump>
+
+=item sv_dup
+X<sv_dup>
+
+=item sv_peek
+X<sv_peek>
+
+=item sv_pvn_nomg
+X<sv_pvn_nomg>
+
+=item sv_setpvf_mg_nocontext
+X<sv_setpvf_mg_nocontext>
+
+=item sv_setpvf_nocontext
+X<sv_setpvf_nocontext>
+
+=item sv_utf8_upgrade_flags_grow
+X<sv_utf8_upgrade_flags_grow>
+
+=item swash_fetch
+X<swash_fetch>
+
+=item swash_init
+X<swash_init>
+
+=item sys_init
+X<sys_init>
+
+=item sys_init3
+X<sys_init3>
+
+=item sys_intern_clear
+X<sys_intern_clear>
+
+=item sys_intern_dup
+X<sys_intern_dup>
+
+=item sys_intern_init
+X<sys_intern_init>
+
+=item sys_term
+X<sys_term>
+
+=item taint_env
+X<taint_env>
+
+=item taint_proper
+X<taint_proper>
+
+=item tmps_grow
+X<tmps_grow>
+
+=item to_uni_fold
+X<to_uni_fold>
+
+=item to_uni_lower
+X<to_uni_lower>
+
+=item to_uni_lower_lc
+X<to_uni_lower_lc>
+
+=item to_uni_title
+X<to_uni_title>
+
+=item to_uni_title_lc
+X<to_uni_title_lc>
+
+=item to_uni_upper
+X<to_uni_upper>
+
+=item to_uni_upper_lc
+X<to_uni_upper_lc>
+
+=item unlnk
+X<unlnk>
+
+=item unsharepvn
+X<unsharepvn>
+
+=item utf16_to_utf8
+X<utf16_to_utf8>
+
+=item utf16_to_utf8_reversed
+X<utf16_to_utf8_reversed>
+
+=item uvchr_to_utf8_flags
+X<uvchr_to_utf8_flags>
+
+=item uvuni_to_utf8
+X<uvuni_to_utf8>
+
+=item vcroak
+X<vcroak>
+
+=item vdeb
+X<vdeb>
+
+=item vform
+X<vform>
+
+=item vload_module
+X<vload_module>
+
+=item vmess
+X<vmess>
+
+=item vnewSVpvf
+X<vnewSVpvf>
+
+=item vwarn
+X<vwarn>
+
+=item vwarner
+X<vwarner>
+
+=item warn_nocontext
+X<warn_nocontext>
+
+=item warner
+X<warner>
+
+=item warner_nocontext
+X<warner_nocontext>
+
+=item whichsig
+X<whichsig>
+
+=back
+
+
 =head1 AUTHORS
 
 Until May 1997, this document was maintained by Jeff Okamoto
@@ -7381,7 +9321,7 @@ Updated to be autogenerated from comments in the source by Benjamin Stuhl.
 
 =head1 SEE ALSO
 
-perlguts(1), perlxs(1), perlxstut(1), perlintern(1)
+L<perlguts>, L<perlxs>, L<perlxstut>, L<perlintern>
 
 =cut
 

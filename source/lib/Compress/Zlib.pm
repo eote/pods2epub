@@ -3,22 +3,21 @@ package Compress::Zlib;
 
 require 5.004 ;
 require Exporter;
-use AutoLoader;
 use Carp ;
 use IO::Handle ;
 use Scalar::Util qw(dualvar);
 
-use IO::Compress::Base::Common 2.024 ;
-use Compress::Raw::Zlib 2.024 ;
-use IO::Compress::Gzip 2.024 ;
-use IO::Uncompress::Gunzip 2.024 ;
+use IO::Compress::Base::Common 2.034 ;
+use Compress::Raw::Zlib 2.034 ;
+use IO::Compress::Gzip 2.034 ;
+use IO::Uncompress::Gunzip 2.034 ;
 
 use strict ;
 use warnings ;
 use bytes ;
-our ($VERSION, $XS_VERSION, @ISA, @EXPORT, @EXPORT_OK, %EXPORT_TAGS, $AUTOLOAD);
+our ($VERSION, $XS_VERSION, @ISA, @EXPORT, @EXPORT_OK, %EXPORT_TAGS);
 
-$VERSION = '2.024';
+$VERSION = '2.034';
 $XS_VERSION = $VERSION; 
 $VERSION = eval $VERSION;
 
@@ -44,16 +43,6 @@ push @EXPORT, @Compress::Raw::Zlib::EXPORT ;
 BEGIN
 {
     *zlib_version = \&Compress::Raw::Zlib::zlib_version;
-}
-
-sub AUTOLOAD {
-    my($constname);
-    ($constname = $AUTOLOAD) =~ s/.*:://;
-    my ($error, $val) = Compress::Raw::Zlib::constant($constname);
-    Carp::croak $error if $error;
-    no strict 'refs';
-    *{$AUTOLOAD} = sub { $val };
-    goto &{$AUTOLOAD};
 }
 
 use constant FLAG_APPEND             => 1 ;
@@ -98,15 +87,16 @@ sub _set_gzerr_undef
     _set_gzerr(@_);
     return undef;
 }
+
 sub _save_gzerr
 {
     my $gz = shift ;
     my $test_eof = shift ;
 
     my $value = $gz->errorNo() || 0 ;
+    my $eof = $gz->eof() ;
 
     if ($test_eof) {
-        #my $gz = $self->[0] ;
         # gzread uses Z_STREAM_END to denote a successful end
         $value = Z_STREAM_END() if $gz->eof() && $value == 0 ;
     }
@@ -173,13 +163,14 @@ sub Compress::Zlib::gzFile::gzread
 
     my $len = defined $_[1] ? $_[1] : 4096 ; 
 
+    my $gz = $self->[0] ;
     if ($self->gzeof() || $len == 0) {
         # Zap the output buffer to match ver 1 behaviour.
         $_[0] = "" ;
+        _save_gzerr($gz, 1);
         return 0 ;
     }
 
-    my $gz = $self->[0] ;
     my $status = $gz->read($_[0], $len) ; 
     _save_gzerr($gz, 1);
     return $status ;
@@ -462,7 +453,7 @@ sub inflate
 
 package Compress::Zlib ;
 
-use IO::Compress::Gzip::Constants 2.024 ;
+use IO::Compress::Gzip::Constants 2.034 ;
 
 sub memGzip($)
 {
@@ -709,7 +700,7 @@ enhancements/changes have been made to the C<gzopen> interface:
 
 =item 1
 
-If you want to to open either STDIN or STDOUT with C<gzopen>, you can now
+If you want to open either STDIN or STDOUT with C<gzopen>, you can now
 optionally use the special filename "C<->" as a synonym for C<\*STDIN> and
 C<\*STDOUT>.
 
@@ -1018,7 +1009,7 @@ carry out in-memory gzip compression.
 This function is used to uncompress an in-memory gzip file.
 
     $dest = Compress::Zlib::memGunzip($buffer) 
-        or die "Cannot uncomprss: $gzerrno\n";
+        or die "Cannot uncompress: $gzerrno\n";
 
 If successful, it returns the uncompressed gzip file. Otherwise it
 returns C<undef> and the C<$gzerrno> variable will store the zlib error
@@ -1487,7 +1478,7 @@ See the Changes file.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (c) 1995-2010 Paul Marquess. All rights reserved.
+Copyright (c) 1995-2011 Paul Marquess. All rights reserved.
 
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.

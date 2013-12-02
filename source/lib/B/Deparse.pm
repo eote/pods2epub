@@ -16,13 +16,14 @@ use B qw(class main_root main_start main_cv svref_2object opnumber perlstring
 	 OPpTRANS_SQUASH OPpTRANS_DELETE OPpTRANS_COMPLEMENT OPpTARGET_MY
 	 OPpCONST_ARYBASE OPpEXISTS_SUB OPpSORT_NUMERIC OPpSORT_INTEGER
 	 OPpSORT_REVERSE OPpSORT_INPLACE OPpSORT_DESCEND OPpITER_REVERSED
+	 OPpREVERSE_INPLACE OPpCONST_NOVER
 	 SVf_IOK SVf_NOK SVf_ROK SVf_POK SVpad_OUR SVf_FAKE SVs_RMG SVs_SMG
          CVf_METHOD CVf_LVALUE
 	 PMf_KEEP PMf_GLOBAL PMf_CONTINUE PMf_EVAL PMf_ONCE
 	 PMf_MULTILINE PMf_SINGLELINE PMf_FOLD PMf_EXTENDED),
 	 ($] < 5.009 ? 'PMf_SKIPWHITE' : 'RXf_SKIPWHITE'),
 	 ($] < 5.011 ? 'CVf_LOCKED' : ());
-$VERSION = 0.89;
+$VERSION = 0.97_01;
 use strict;
 use vars qw/$AUTOLOAD/;
 use warnings ();
@@ -487,8 +488,11 @@ sub stash_subs {
 		next unless $AF eq $0 || exists $self->{'files'}{$AF};
 	    }
 	    push @{$self->{'protos_todo'}}, [$pack . $key, $val->PV];
-	} elsif ($class eq "IV") {
+	} elsif ($class eq "IV" && !($val->FLAGS & SVf_ROK)) {
 	    # Just a name. As above.
+	    # But skip proxy constant subroutines, as some form of perl-space
+	    # visible code must have created them, be it a use statement, or
+	    # some direct symbol-table manipulation code that we will Deparse
 	    my $A = $stash{"AUTOLOAD"};
 	    if (defined ($A) && class($A) eq "GV" && defined($A->CV)
 		&& class($A->CV) eq "CV") {
@@ -1376,7 +1380,6 @@ sub pp_nextstate {
     $self->{'curcop'} = $op;
     my @text;
     push @text, $self->cop_subs($op);
-    push @text, $op->label . ": " if $op->label;
     my $stash = $op->stashpv;
     if ($stash ne $self->{'curstash'}) {
 	push @text, "package $stash;\n";
@@ -1429,6 +1432,8 @@ sub pp_nextstate {
 	push @text, "\f#line " . $op->line .
 	  ' "' . $op->file, qq'"\n';
     }
+
+    push @text, $op->label . ": " if $op->label;
 
     return join("", @text);
 }
@@ -1590,6 +1595,10 @@ sub unop {
     my $kid;
     if ($op->flags & OPf_KIDS) {
 	$kid = $op->first;
+ 	if (not $name) {
+ 	    # this deals with 'boolkeys' right now
+ 	    return $self->deparse($kid,$cx);
+ 	}
 	my $builtinname = $name;
 	$builtinname =~ /^CORE::/ or $builtinname = "CORE::$name";
 	if (defined prototype($builtinname)
@@ -1633,6 +1642,10 @@ sub pp_chr { maybe_targmy(@_, \&unop, "chr") }
 sub pp_each { unop(@_, "each") }
 sub pp_values { unop(@_, "values") }
 sub pp_keys { unop(@_, "keys") }
+sub pp_boolkeys { 
+    # no name because its an optimisation op that has no keyword
+    unop(@_,"");
+}
 sub pp_aeach { unop(@_, "each") }
 sub pp_avalues { unop(@_, "values") }
 sub pp_akeys { unop(@_, "keys") }
@@ -1776,7 +1789,7 @@ sub pp_require {
 	$name =~ s/\.pm//g;
 	return "$opname $name";
     } else {	
-	$self->unop($op, $cx, $opname);
+	$self->unop($op, $cx, $op->first->private & OPpCONST_NOVER ? "no" : $opname);
     }
 }
 
@@ -2227,7 +2240,7 @@ sub logop {
 
 sub pp_and { logop(@_, "and", 3, "&&", 11, "if") }
 sub pp_or  { logop(@_, "or",  2, "||", 10, "unless") }
-sub pp_dor { logop(@_, "err", 2, "//", 10, "") }
+sub pp_dor { logop(@_, "//", 10) }
 
 # xor is syntactically a logop, but it's really a binop (contrary to
 # old versions of opcode.pl). Syntax is what matters here.
@@ -2277,6 +2290,9 @@ sub listop {
     }
     for (; !null($kid); $kid = $kid->sibling) {
 	push @exprs, $self->deparse($kid, 6);
+    }
+    if ($name eq "reverse" && ($op->private & OPpREVERSE_INPLACE)) {
+	return "$exprs[0] = $name" . ($parens ? "($exprs[0])" : " $exprs[0]");
     }
     if ($parens) {
 	return "$name(" . join(", ", @exprs) . ")";
@@ -4270,10 +4286,11 @@ sub pp_split {
     }
 
     # handle special case of split(), and split(' ') that compiles to /\s+/
+    # Under 5.10, the reflags may be undef if the split regexp isn't a constant
     $kid = $op->first;
     if ( $kid->flags & OPf_SPECIAL
 	 and ( $] < 5.009 ? $kid->pmflags & PMf_SKIPWHITE()
-	      : $kid->reflags & RXf_SKIPWHITE() ) ) {
+	      : ($kid->reflags || 0) & RXf_SKIPWHITE() ) ) {
 	$exprs[0] = "' '";
     }
 

@@ -7,7 +7,7 @@ use warnings;
 
 use Scalar::Util qw(reftype refaddr blessed);
 
-our $VERSION = '1.32';
+our $VERSION = '1.37';
 my $XS_VERSION = $VERSION;
 $VERSION = eval $VERSION;
 
@@ -187,7 +187,7 @@ threads::shared - Perl extension for sharing data structures between threads
 
 =head1 VERSION
 
-This document describes threads::shared version 1.32
+This document describes threads::shared version 1.37
 
 =head1 SYNOPSIS
 
@@ -527,7 +527,8 @@ that the contents of hash-based objects will be lost due to the above
 mentioned limitation.  See F<examples/class.pl> (in the CPAN distribution of
 this module) for how to create a class that supports object sharing.
 
-Does not support C<splice> on arrays!
+Does not support C<splice> on arrays.  Does not support explicitly changing
+array lengths via $#array -- use C<push> and C<pop> instead.
 
 Taking references to the elements of shared arrays and hashes does not
 autovivify the elements, and neither does slicing a shared array/hash over
@@ -586,12 +587,6 @@ to: L<http://rt.cpan.org/Public/Dist/Display.html?Name=threads-shared>
 
 L<threads::shared> Discussion Forum on CPAN:
 L<http://www.cpanforum.com/dist/threads-shared>
-
-Annotated POD for L<threads::shared>:
-L<http://annocpan.org/~JDHEDDEN/threads-shared-1.32/shared.pm>
-
-Source repository:
-L<http://code.google.com/p/threads-shared/>
 
 L<threads>, L<perlthrtut>
 

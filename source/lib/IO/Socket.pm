@@ -493,6 +493,16 @@ an AF_INET socket the value of &AF_INET will be returned.
 Unified method to both set and get options in the SOL_SOCKET level. If called
 with one argument then getsockopt is called, otherwise setsockopt is called.
 
+=item getsockopt(LEVEL, OPT)
+
+Get option associated with the socket. Other levels than SOL_SOCKET
+may be specified here.
+
+=item setsockopt(LEVEL, OPT, VAL)
+
+Set option associated with the socket. Other levels than SOL_SOCKET
+may be specified here.
+
 =item socktype
 
 Returns the numerical number for the socket type. For example, for
@@ -500,9 +510,10 @@ a SOCK_STREAM socket the value of &SOCK_STREAM will be returned.
 
 =item timeout([VAL])
 
-Set or get the timeout value associated with this socket. If called without
-any arguments then the current setting is returned. If called with an argument
-the current setting is changed and the previous value returned.
+Set or get the timeout value (in seconds) associated with this socket.
+If called without any arguments then the current setting is returned. If
+called with an argument the current setting is changed and the previous
+value returned.
 
 =back
 

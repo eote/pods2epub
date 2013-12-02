@@ -69,7 +69,7 @@ use XSLoader ();
 );
 
 # This module isn't dual life, so no need for dev version numbers.
-$VERSION = '1.090001';
+$VERSION = '1.10';
 
 sub AUTOLOAD {
     my($constname);

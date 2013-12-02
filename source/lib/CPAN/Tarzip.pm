@@ -4,7 +4,7 @@ use strict;
 use vars qw($VERSION @ISA $BUGHUNTING);
 use CPAN::Debug;
 use File::Basename qw(basename);
-$VERSION = "5.501";
+$VERSION = "5.5011";
 # module is internal to CPAN.pm
 
 @ISA = qw(CPAN::Debug); ## no critic
@@ -29,8 +29,8 @@ sub new {
             } else {
                 $CPAN::Frontend->mydie(qq{
 CPAN.pm needs the external program bzip2 in order to handle '$file'.
-Please install it now and run 'o conf init' to register it as external
-program.
+Please install it now and run 'o conf init bzip2' from the
+CPAN shell prompt to register it as external program.
 });
             }
         }
@@ -253,14 +253,21 @@ sub untar {
     if (0) { # makes changing order easier
     } elsif ($BUGHUNTING) {
         $prefer=2;
-    } elsif ($exttar && $extgzip && $file =~ /\.(?:bz2|tbz)$/i) {
-        # until Archive::Tar handles bzip2
+    } elsif ($CPAN::Config->{prefer_external_tar}) {
         $prefer = 1;
     } elsif (
              $CPAN::META->has_usable("Archive::Tar")
              &&
              $CPAN::META->has_inst("Compress::Zlib") ) {
-        $prefer = 2;
+        my $prefer_external_tar = $CPAN::Config->{prefer_external_tar};
+        unless (defined $prefer_external_tar) {
+            if ($^O =~ /(MSWin32|solaris)/) {
+                $prefer_external_tar = 0;
+            } else {
+                $prefer_external_tar = 1;
+            }
+        }
+        $prefer = $prefer_external_tar ? 1 : 2;
     } elsif ($exttar && $extgzip) {
         # no modules and not bz2
         $prefer = 1;
@@ -422,11 +429,20 @@ sub unzip {
             return if $CPAN::Signal;
         }
         return 1;
-    } else {
-        my $unzip = $CPAN::Config->{unzip} or
-            $CPAN::Frontend->mydie("Cannot unzip, no unzip program available");
+    } elsif ( my $unzip = $CPAN::Config->{unzip}  ) {
         my @system = ($unzip, $file);
         return system(@system) == 0;
+    }
+    else {
+            $CPAN::Frontend->mydie(<<"END");
+
+Can't unzip '$file':
+
+You have not configured an 'unzip' program and do not have Archive::Zip
+installed.  Please either install Archive::Zip or else configure 'unzip'
+by running the command 'o conf init unzip' from the CPAN shell prompt.
+
+END
     }
 }
 

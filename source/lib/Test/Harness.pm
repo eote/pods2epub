@@ -46,11 +46,11 @@ Test::Harness - Run Perl standard test scripts with statistics
 
 =head1 VERSION
 
-Version 3.20
+Version 3.23
 
 =cut
 
-$VERSION = '3.20';
+$VERSION = '3.23';
 
 # Backwards compatibility for exportable variable names.
 *verbose  = *Verbose;
@@ -134,7 +134,7 @@ sub _aggregate {
     _aggregate_tests( $harness, $aggregate, @tests );
 }
 
-# Make sure the child seens all the extra junk in @INC
+# Make sure the child sees all the extra junk in @INC
 sub _apply_extra_INC {
     my $harness = shift;
 
@@ -584,7 +584,7 @@ module is based) has this attribution:
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright (c) 2007-2008, Andy Armstrong C<< <andy@hexten.net> >>. All rights reserved.
+Copyright (c) 2007-2011, Andy Armstrong C<< <andy@hexten.net> >>. All rights reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.

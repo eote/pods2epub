@@ -44,11 +44,11 @@ sub import {
     return;
 }
 
-die "Perl lib version (5.10.1) doesn't match executable version ($])"
+die "Perl lib version (5.12.3) doesn't match executable version ($])"
     unless $^V;
 
-$^V eq 5.10.1
-    or die "Perl lib version (5.10.1) doesn't match executable version (" .
+$^V eq 5.12.3
+    or die "Perl lib version (5.12.3) doesn't match executable version (" .
 	sprintf("v%vd",$^V) . ")";
 
 
@@ -85,7 +85,7 @@ tie %Config, 'Config', {
     inc_version_list => '',
     intsize => '4',
     ldlibpthname => '',
-    libpth => 'C:\\strawberry\\c\\lib',
+    libpth => 'C:\\strawberry\\c\\lib C:\\strawberry\\c\\i686-w64-mingw32\\lib',
     osname => 'MSWin32',
     osvers => '5.1',
     path_sep => ';',
@@ -94,8 +94,8 @@ tie %Config, 'Config', {
     sitearchexp => 'C:\\strawberry\\perl\\site\\lib',
     sitelibexp => 'C:\\strawberry\\perl\\site\\lib',
     useithreads => 'define',
-    usevendorprefix => undef,
-    version => '5.10.1',
+    usevendorprefix => 'define',
+    version => '5.12.3',
 };
 eval {
 	require Portable;

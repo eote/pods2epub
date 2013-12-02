@@ -1,7 +1,7 @@
 package bignum;
 use 5.006;
 
-$VERSION = '0.23';
+$VERSION = '0.25';
 use Exporter;
 @ISA 		= qw( bigint );
 @EXPORT_OK	= qw( PI e bexp bpi ); 
@@ -406,7 +406,7 @@ Math::BigInt/Math::BigFloat.
 
 =item l or lib
 
-Load a different math lib, see L<MATH LIBRARY>.
+Load a different math lib, see L<Math Library>.
 
 	perl -Mbignum=l,GMP -e 'print 2 ** 512'
 

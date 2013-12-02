@@ -13,15 +13,15 @@ my $IS_WIN32 = ( $^O =~ /^(MS)?Win32$/ );
 
 =head1 NAME
 
-TAP::Parser::Iterator::Process - Iterator for proccess-based TAP sources
+TAP::Parser::Iterator::Process - Iterator for process-based TAP sources
 
 =head1 VERSION
 
-Version 3.20
+Version 3.23
 
 =cut
 
-$VERSION = '3.20';
+$VERSION = '3.23';
 
 =head1 SYNOPSIS
 
@@ -80,7 +80,7 @@ Get the exit status for this iterator's process.
 {
 
     local $^W;    # no warnings
-    # get around a catch22 in the test suite that causes failures on Win32:
+       # get around a catch22 in the test suite that causes failures on Win32:
     local $SIG{__DIE__} = undef;
     eval { require POSIX; &POSIX::WEXITSTATUS(0) };
     if ($@) {

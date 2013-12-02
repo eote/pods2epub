@@ -12,7 +12,7 @@ use File::Spec::Functions qw(catfile catdir splitdir);
 use vars qw($VERSION @Pagers $Bindir $Pod2man
   $Temp_Files_Created $Temp_File_Lifetime
 );
-$VERSION = '3.15';
+$VERSION = '3.15_02';
 #..........................................................................
 
 BEGIN {  # Make a DEBUG constant very first thing...
@@ -301,7 +301,7 @@ sub usage_brief {
 Usage: $me [-h] [-V] [-r] [-i] [-D] [-t] [-u] [-m] [-n nroffer_program] [-l] [-T] [-d output_filename] [-o output_format] [-M FormatterModuleNameToUse] [-w formatter_option:option_value] [-L translation_code] [-F] [-X] PageName|ModuleName|ProgramName
        $me -f PerlFunc
        $me -q FAQKeywords
-       $me -A PerlVar
+       $me -v PerlVar
 
 The -h option prints more help.  Also try "perldoc perldoc" to get
 acquainted with the system.                        [Perldoc v$VERSION]
@@ -658,8 +658,18 @@ sub options_processing {
     $self->opt_n("nroff") unless $self->opt_n;
     $self->add_formatter_option( '__nroffer' => $self->opt_n );
 
+    # Get language from PERLDOC_POD2 environment variable
+    if ( ! $self->opt_L && $ENV{PERLDOC_POD2} ) {
+        if ( $ENV{PERLDOC_POD2} eq '1' ) {
+          $self->_elem('opt_L',(split(/\_/, $ENV{LC_ALL} || $ENV{LC_LANG} || $ENV{LANG}))[0] );
+        }
+        else {
+          $self->_elem('opt_L', $ENV{PERLDOC_POD2});
+        }
+    };
+
     # Adjust for using translation packages
-    $self->add_translator($self->opt_L) if $self->opt_L;
+    $self->add_translator(split(/\s+/,$self->opt_L)) if $self->opt_L;
 
     return;
 }
@@ -932,6 +942,7 @@ sub search_perlvar {
             ++$inlist;
         }
         elsif (/^=back/) {
+            last if $found && !$inheader && !$inlist;
             --$inlist;
         }
         push @$pod, $_;
@@ -965,7 +976,9 @@ sub search_perlfunc {
      print "Going to perlfunc-scan for $search_re in $perlfunc\n";
 
     my $re = 'Alphabetical Listing of Perl Functions';
-    if ( $self->opt_L ) {
+
+    # Check available translator or backup to default (english)
+    if ( $self->opt_L && defined $self->{'translators'}->[0] ) {
         my $tr = $self->{'translators'}->[0];
         $re =  $tr->search_perlfunc_re if $tr->can('search_perlfunc_re');
     }
@@ -991,6 +1004,7 @@ sub search_perlfunc {
             ++$inlist;
         }
         elsif (/^=back/) {
+            last if $found > 1 and not $inlist;
             --$inlist;
         }
         push @$pod, $_;

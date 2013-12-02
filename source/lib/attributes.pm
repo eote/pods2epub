@@ -1,6 +1,6 @@
 package attributes;
 
-our $VERSION = 0.09;
+our $VERSION = 0.12;
 
 @EXPORT_OK = qw(get reftype);
 @EXPORT = ();
@@ -18,15 +18,25 @@ sub carp {
     goto &Carp::carp;
 }
 
-## forward declaration(s) rather than wrapping the bootstrap call in BEGIN{}
-#sub reftype ($) ;
-#sub _fetch_attrs ($) ;
-#sub _guess_stash ($) ;
-#sub _modify_attrs ;
-#
-# The extra trips through newATTRSUB in the interpreter wipe out any savings
-# from avoiding the BEGIN block.  Just do the bootstrap now.
-BEGIN { bootstrap attributes }
+my %deprecated;
+$deprecated{CODE} = qr/\A-?(locked)\z/;
+$deprecated{ARRAY} = $deprecated{HASH} = $deprecated{SCALAR}
+    = qr/\A-?(unique)\z/;
+
+sub _modify_attrs_and_deprecate {
+    my $svtype = shift;
+    # Now that we've removed handling of locked from the XS code, we need to
+    # remove it here, else it ends up in @badattrs. (If we do the deprecation in
+    # XS, we can't control the warning based on *our* caller's lexical settings,
+    # and the warned line is in this package)
+    grep {
+	$deprecated{$svtype} && /$deprecated{$svtype}/ ? do {
+	    require warnings;
+	    warnings::warnif('deprecated', "Attribute \"$1\" is deprecated");
+	    0;
+	} : 1
+    } _modify_attrs(@_);
+}
 
 sub import {
     @_ > 2 && ref $_[2] or do {
@@ -41,7 +51,7 @@ sub import {
 	if defined $home_stash && $home_stash ne '';
     my @badattrs;
     if ($pkgmeth) {
-	my @pkgattrs = _modify_attrs($svref, @attrs);
+	my @pkgattrs = _modify_attrs_and_deprecate($svtype, $svref, @attrs);
 	@badattrs = $pkgmeth->($home_stash, $svref, @pkgattrs);
 	if (!@badattrs && @pkgattrs) {
             require warnings;
@@ -59,7 +69,7 @@ sub import {
 	}
     }
     else {
-	@badattrs = _modify_attrs($svref, @attrs);
+	@badattrs = _modify_attrs_and_deprecate($svtype, $svref, @attrs);
     }
     if (@badattrs) {
 	croak "Invalid $svtype attribute" .
@@ -73,8 +83,8 @@ sub get ($) {
     @_ == 1  && ref $_[0] or
 	croak 'Usage: '.__PACKAGE__.'::get $ref';
     my $svref = shift;
-    my $svtype = uc reftype $svref;
-    my $stash = _guess_stash $svref;
+    my $svtype = uc reftype($svref);
+    my $stash = _guess_stash($svref);
     $stash = caller unless defined $stash;
     my $pkgmeth;
     $pkgmeth = UNIVERSAL::can($stash, "FETCH_${svtype}_ATTRIBUTES")
@@ -86,6 +96,9 @@ sub get ($) {
 }
 
 sub require_version { goto &UNIVERSAL::VERSION }
+
+require XSLoader;
+XSLoader::load('attributes', $VERSION);
 
 1;
 __END__
@@ -194,38 +207,23 @@ The following are the built-in attributes for subroutines:
 
 =over 4
 
-=item locked
-
-B<5.005 threads only!  The use of the "locked" attribute currently
-only makes sense if you are using the deprecated "Perl 5.005 threads"
-implementation of threads.>
-
-Setting this attribute is only meaningful when the subroutine or
-method is to be called by multiple threads.  When set on a method
-subroutine (i.e., one marked with the B<method> attribute below),
-Perl ensures that any invocation of it implicitly locks its first
-argument before execution.  When set on a non-method subroutine,
-Perl ensures that a lock is taken on the subroutine itself before
-execution.  The semantics of the lock are exactly those of one
-explicitly taken with the C<lock> operator immediately after the
-subroutine is entered.
-
-=item method
-
-Indicates that the referenced subroutine is a method.
-This has a meaning when taken together with the B<locked> attribute,
-as described there.  It also means that a subroutine so marked
-will not trigger the "Ambiguous call resolved as CORE::%s" warning.
-
 =item lvalue
 
 Indicates that the referenced subroutine is a valid lvalue and can
 be assigned to. The subroutine must return a modifiable value such
 as a scalar variable, as described in L<perlsub>.
 
-=back
+=item method
 
-For global variables there is C<unique> attribute: see L<perlfunc/our>.
+Indicates that the referenced subroutine is a method. A subroutine so marked
+will not trigger the "Ambiguous call resolved as CORE::%s" warning.
+
+=item locked
+
+The "locked" attribute has no effect in 5.10.0 and later. It was used as part
+of the now-removed "Perl 5.005 threads".
+
+=back
 
 =head2 Available Subroutines
 
@@ -333,7 +331,7 @@ Some examples of syntactically valid attribute lists:
     switch(10,foo(7,3))  :  expensive
     Ugly('\(") :Bad
     _5x5
-    locked method
+    lvalue method
 
 Some examples of syntactically invalid attribute lists (with annotation):
 
@@ -397,22 +395,22 @@ Effect:
 Code:
 
     package X;
-    sub foo : locked ;
+    sub foo : lvalue ;
 
 Effect:
 
-    use attributes X => \&foo, "locked";
+    use attributes X => \&foo, "lvalue";
 
 =item 4.
 
 Code:
 
     package X;
-    sub Y::x : locked { 1 }
+    sub Y::x : lvalue { 1 }
 
 Effect:
 
-    use attributes Y => \&Y::x, "locked";
+    use attributes Y => \&Y::x, "lvalue";
 
 =item 5.
 
@@ -425,11 +423,11 @@ Code:
     BEGIN { *bar = \&X::foo; }
 
     package Z;
-    sub Y::bar : locked ;
+    sub Y::bar : lvalue ;
 
 Effect:
 
-    use attributes X => \&X::foo, "locked";
+    use attributes X => \&X::foo, "lvalue";
 
 =back
 
@@ -487,9 +485,6 @@ element ('Test').
 
 L<perlsub/"Private Variables via my()"> and
 L<perlsub/"Subroutine Attributes"> for details on the basic declarations;
-L<attrs> for the obsolescent form of subroutine attribute specification
-which this module replaces;
 L<perlfunc/use> for details on the normal invocation mechanism.
 
 =cut
-

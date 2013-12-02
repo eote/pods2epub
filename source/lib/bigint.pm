@@ -1,7 +1,7 @@
 package bigint;
 use 5.006;
 
-$VERSION = '0.32';
+$VERSION = '0.34';
 use Exporter;
 @ISA		= qw( Exporter );
 @EXPORT_OK	= qw( PI e bpi bexp hex oct );
@@ -328,8 +328,8 @@ bigint - Transparent BigInteger support for Perl
 
 =head1 DESCRIPTION
 
-All operators (including basic math operations) are overloaded. Integer
-constants are created as proper BigInts.
+All operators (including basic math operations) except the range operator C<..>
+are overloaded. Integer constants are created as proper BigInts.
 
 Floating point constants are truncated to integer. All parts and results of
 expressions are also truncated.
@@ -365,7 +365,7 @@ In practice this makes seldom a difference as B<parts and results> of
 expressions will be truncated anyway, but this can, for instance, affect the
 return value of subroutines:
 
-    sub three_integer { use integer; return 3.2; }
+    sub three_integer { use integer; return 3.2; } 
     sub three_bigint { use bigint; return 3.2; }
 
     print three_integer(), " ", three_bigint(),"\n";	# prints "3.2 3"
@@ -608,6 +608,20 @@ This method only works on Perl v5.9.4 or later.
 
 =over 2
 
+=item ranges
+
+Perl does not allow overloading of ranges, so you can neither safely use
+ranges with bigint endpoints, nor is the iterator variable a bigint.
+
+	use 5.010;
+	for my $i (12..13) {
+	  for my $j (20..21) {
+	    say $i ** $j;  # produces a floating-point number,
+	                   # not a big integer
+	  }
+	}
+
+
 =item in_effect()
 
 This method only works on Perl v5.9.4 or later.
@@ -676,7 +690,7 @@ Especially L<bigrat> as in C<perl -Mbigrat -le 'print 1/3+1/4'> and
 L<bignum> as in C<perl -Mbignum -le 'print sqrt(2)'>.
 
 L<Math::BigInt>, L<Math::BigRat> and L<Math::Big> as well
-as L<Math::BigInt::BitVect>, L<Math::BigInt::Pari> and  L<Math::BigInt::GMP>.
+as L<Math::BigInt::Pari> and  L<Math::BigInt::GMP>.
 
 =head1 AUTHORS
 

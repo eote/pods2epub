@@ -142,24 +142,24 @@ sub catdir {
 	    $spath = unixify($spath) unless $spath =~ m#/#;
 	    $sdir= unixify($sdir) unless $sdir =~ m#/#;
             return $self->SUPER::catdir($spath, $sdir)
-            }
+	}
 
 	$sdir = $self->eliminate_macros($sdir) unless $sdir =~ /^[\w\-]+\Z(?!\n)/s;
-	    $rslt = $self->fixpath($self->eliminate_macros($spath)."/$sdir",1);
+	$rslt = $self->fixpath($self->eliminate_macros($spath)."/$sdir",1);
 
-	    # Special case for VMS absolute directory specs: these will have
-	    # had device prepended during trip through Unix syntax in
-	    # eliminate_macros(), since Unix syntax has no way to express
-	    # "absolute from the top of this device's directory tree".
-	    if ($spath =~ /^[\[<][^.\-]/s) { $rslt =~ s/^[^\[<]+//s; }
+	# Special case for VMS absolute directory specs: these will have
+	# had device prepended during trip through Unix syntax in
+	# eliminate_macros(), since Unix syntax has no way to express
+	# "absolute from the top of this device's directory tree".
+	if ($spath =~ /^[\[<][^.\-]/s) { $rslt =~ s/^[^\[<]+//s; }
 
-                } else {
+    } else {
 	# Single directory. Return an empty string on null input; otherwise
 	# just return a canonical path.
 
 	if    (not defined $dir or not length $dir) {
 	    $rslt = '';
-            } else {
+	} else {
 	    $rslt = $unix_rpt ? $dir : vmspath($dir);
 	}
     }
@@ -195,7 +195,7 @@ sub catfile {
 	if ($spath =~ /^(?<!\^)[^\)\]\/:>]+\)\Z(?!\n)/s && basename($file) eq $file) {
 	    $rslt = "$spath$file";
 	} else {
-		$rslt = $self->eliminate_macros($spath);
+           $rslt = $self->eliminate_macros($spath);
            $rslt .= (defined($rslt) && length($rslt) ? '/' : '') . unixify($file);
            $rslt = vmsify($rslt) unless $unix_rpt;
 	}
@@ -415,16 +415,16 @@ sub catpath {
     my($self,$dev,$dir,$file) = @_;
     
     # We look for a volume in $dev, then in $dir, but not both
-        my ($dir_volume, $dir_dir, $dir_file) = $self->splitpath($dir);
-        $dev = $dir_volume unless length $dev;
+    my ($dir_volume, $dir_dir, $dir_file) = $self->splitpath($dir);
+    $dev = $dir_volume unless length $dev;
     $dir = length $dir_file ? $self->catfile($dir_dir, $dir_file) : $dir_dir;
     
     if ($dev =~ m|^(?<!\^)/+([^/]+)|) { $dev = "$1:"; }
     else { $dev .= ':' unless $dev eq '' or $dev =~ /:\Z(?!\n)/; }
     if (length($dev) or length($dir)) {
         $dir = "[$dir]" unless $dir =~ /(?<!\^)[\[<\/]/;
-          $dir = vmspath($dir);
-      }
+        $dir = vmspath($dir);
+    }
     $dir = '' if length($dev) && ($dir eq '[]' || $dir eq '<>');
     "$dev$dir$file";
 }
@@ -500,11 +500,11 @@ sub rel2abs {
     my $self = shift ;
     my ($path,$base ) = @_;
     return undef unless defined $path;
-        if ($path =~ m/\//) {
-	    $path = ( -d $path || $path =~ m/\/\z/  # educated guessing about
-		       ? vmspath($path)             # whether it's a directory
-		       : vmsify($path) );
-        }
+    if ($path =~ m/\//) {
+       $path = ( -d $path || $path =~ m/\/\z/  # educated guessing about
+                  ? vmspath($path)             # whether it's a directory
+                  : vmsify($path) );
+    }
     $base = vmspath($base) if defined $base && $base =~ m/\//;
 
     # Clean up and split up $path
@@ -530,12 +530,12 @@ sub rel2abs {
         $path_directories = '' if $path_directories eq '[]' ||
                                   $path_directories eq '<>';
         my $sep = '' ;
-            $sep = '.'
-                if ( $base_directories =~ m{[^.\]>]\Z(?!\n)} &&
-                     $path_directories =~ m{^[^.\[<]}s
-                ) ;
-            $base_directories = "$base_directories$sep$path_directories";
-            $base_directories =~ s{\.?[\]>][\[<]\.?}{.};
+        $sep = '.'
+            if ( $base_directories =~ m{[^.\]>]\Z(?!\n)} &&
+                 $path_directories =~ m{^[^.\[<]}s
+            ) ;
+        $base_directories = "$base_directories$sep$path_directories";
+        $base_directories =~ s{\.?[\]>][\[<]\.?}{.};
 
         $path = $self->catpath( $base_volume, $base_directories, $path_file );
    }

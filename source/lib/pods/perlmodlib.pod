@@ -289,7 +289,7 @@ Enable/disable UTF-8 (or UTF-EBCDIC) in source code
 
 =item vars
 
-Predeclare global variable names (obsolete)
+Predeclare global variable names
 
 =item version
 
@@ -462,6 +462,10 @@ Query, download and build perl modules from CPAN sites
 
 A recipe book for programming with CPAN.pm
 
+=item CPAN::Debug
+
+Internal debugging for CPAN.pm
+
 =item CPAN::Distroprefs
 
 Read and match distroprefs
@@ -469,6 +473,10 @@ Read and match distroprefs
 =item CPAN::FirstTime
 
 Utility for CPAN::Config file Initialization
+
+=item CPAN::HandleConfig
+
+Internal configuration handling for CPAN.pm
 
 =item CPAN::Kwalify
 
@@ -514,6 +522,14 @@ Read and write a subset of YAML for CPAN Meta files
 
 Wrapper around CPAN.pm without using any XS module
 
+=item CPAN::Queue
+
+Internal queue support for CPAN.pm
+
+=item CPAN::Tarzip
+
+Internal handling of tar archives for CPAN.pm
+
 =item CPAN::Version
 
 Utility functions to compare CPAN versions
@@ -533,6 +549,10 @@ Return value objects
 =item CPANPLUS::Config
 
 Configuration defaults and heuristics for CPANPLUS
+
+=item CPANPLUS::Config::HomeEnv
+
+Set the environment for the CPANPLUS base dir
 
 =item CPANPLUS::Configure
 
@@ -689,6 +709,10 @@ Interface to zlib compression library
 =item Config
 
 Access Perl configuration information
+
+=item Config::Perl::V
+
+Structured data retrieval of perl -V output
 
 =item Cwd
 
@@ -1742,6 +1766,10 @@ DEPRECATED
 
 What modules shipped with versions of perl
 
+=item Module::CoreList::Utils
+
+What utilities shipped with versions of perl
+
 =item Module::Load
 
 Runtime require of both modules and files
@@ -2396,7 +2424,7 @@ Implementation of the soundex algorithm.
 
 =item Text::Tabs
 
-Expand and unexpand tabs per the unix expand(1) and unexpand(1)
+Expand and unexpand tabs like unix expand(1) and unexpand(1)
 
 =item Text::Wrap
 
@@ -2514,6 +2542,10 @@ Weighting CJK Unified Ideographs
 
 Weighting CJK Unified Ideographs
 
+=item Unicode::Collate::CJK::Zhuyin
+
+Weighting CJK Unified Ideographs
+
 =item Unicode::Collate::Locale
 
 Linguistic tailoring for DUCET via Unicode::Collate
@@ -2541,10 +2573,6 @@ Perl extension to manipulate DCL symbols
 =item VMS::Stdio
 
 Standard I/O functions via VMS extensions
-
-=item Version::Requirements
-
-A set of version requirements for a CPAN dist
 
 =item Win32
 

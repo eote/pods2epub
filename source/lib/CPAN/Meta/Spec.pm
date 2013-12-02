@@ -1,18 +1,26 @@
-# vi:tw=72
+# XXX RULES FOR PATCHING THIS FILE XXX
+# Patches that fix typos or formatting are acceptable.  Patches
+# that change semantics are not acceptable without prior approval
+# by David Golden or Ricardo Signes.
+
 use 5.006;
 use strict;
 use warnings;
 package CPAN::Meta::Spec;
-our $VERSION = '2.120921'; # VERSION
+our $VERSION = '2.132140'; # VERSION
 
 1;
 
 # ABSTRACT: specification for CPAN distribution metadata
 
 
+# vi:tw=72
 
 __END__
+
 =pod
+
+=encoding utf-8
 
 =head1 NAME
 
@@ -20,7 +28,7 @@ CPAN::Meta::Spec - specification for CPAN distribution metadata
 
 =head1 VERSION
 
-version 2.120921
+version 2.132140
 
 =head1 SYNOPSIS
 
@@ -585,7 +593,7 @@ I<Suggestion for disuse:> Because there is currently no way for a
 distribution to specify a dependency on an optional feature of another
 dependency, the use of C<optional_feature> is discouraged.  Instead,
 create a separate, installable distribution that ensures the desired
-feature is available.  For example, if C<Foo::Bar> has a "Baz" feature,
+feature is available.  For example, if C<Foo::Bar> has a C<Baz> feature,
 release a separate C<Foo-Bar-Baz> distribution that satisfies
 requirements for the feature.
 
@@ -639,14 +647,14 @@ Example:
   provides => {
     'Foo::Bar' => {
       file    => 'lib/Foo/Bar.pm',
-      version => 0.27_02
+      version => '0.27_02',
     },
     'Foo::Bar::Blah' => {
       file    => 'lib/Foo/Bar/Blah.pm',
     },
     'Foo::Bar::Baz' => {
       file    => 'lib/Foo/Bar/Baz.pm',
-      version => 0.3,
+      version => '0.3',
     },
   }
 
@@ -658,19 +666,22 @@ PAUSE, CPAN, and search.cpan.org to build indexes saying in which
 distribution various packages can be found.
 
 The keys of C<provides> are package names that can be found within
-the distribution.  The values are Maps with the following valid subkeys:
+the distribution.  If a package name key is provided, it must
+have a Map with the following valid subkeys:
 
 =over
 
 =item file
 
-This field is required.  The value must contain a Unix-style relative
-file path from the root of the distribution to the module containing the
-package.
+This field is required.  It must contain a Unix-style relative file path
+from the root of the distribution directory to a file that contains or
+generates the package.
 
 =item version
 
-This field contains a I<Version> String for the package, if one exists.
+If it exists, this field must contains a I<Version> String for the
+package.  If the package does not have a C<$VERSION>, this field must
+be omitted.
 
 =back
 
@@ -731,7 +742,8 @@ is a Map with the following valid keys:
 Because a url like C<http://myrepo.example.com/> is ambiguous as to
 type, producers should provide a C<type> whenever a C<url> key is given.
 The C<type> field should be the name of the most common program used
-to work with the repository, e.g. git, svn, cvs, darcs, bzr or hg.
+to work with the repository, e.g. C<git>, C<svn>, C<cvs>, C<darcs>,
+C<bzr> or C<hg>.
 
 =back
 
@@ -992,7 +1004,7 @@ described in the L<Version Ranges> section.
 Another subtle error that can occur in resolving prerequisites comes from
 the way that modules in prerequisites are indexed to distribution files on
 CPAN.  When a module is deleted from a distribution, prerequisites calling
-for that module could indicate an older distribution should installed,
+for that module could indicate an older distribution should be installed,
 potentially overwriting files from a newer distribution.
 
 For example, as of Oct 31, 2009, the CPAN index file contained these
@@ -1144,4 +1156,3 @@ This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-

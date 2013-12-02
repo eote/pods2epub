@@ -32,7 +32,7 @@ use Locale::Maketext::Simple    Class => 'CPANPLUS', Style => 'gettext';
 
 local $Params::Check::VERBOSE = 1;
 
-$VERSION = '0.70';
+$VERSION = '0.74';
 
 =pod
 
@@ -329,7 +329,7 @@ sub prepare {
             $fail++; last RUN;
         }
 
-        unless ( BUILD->( $dir ) ) {
+        unless ( -e BUILD->( $dir ) ) {
             error( loc( "Build.PL failed to generate a Build script: %1", $prep_output ) );
             if ( $conf->get_conf('cpantest') ) {
                $status->{stage} = 'prepare';
@@ -660,7 +660,7 @@ sub create {
             ) {
                 error( loc( "MAKE TEST failed:\n%1 ", $test_output ), ( $verbose ? 0 : 1 ) );
 
-                ### mark specifically *test* failure.. so we dont
+                ### mark specifically *test* failure.. so we don't
                 ### send success on force...
                 $test_fail++;
 

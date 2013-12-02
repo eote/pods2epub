@@ -2,7 +2,7 @@ use 5.006;
 use strict;
 use warnings;
 package CPAN::Meta::Validator;
-our $VERSION = '2.120921'; # VERSION
+our $VERSION = '2.132140'; # VERSION
 
 
 #--------------------------------------------------------------------------#
@@ -828,9 +828,11 @@ sub _error {
 
 # ABSTRACT: validate CPAN distribution metadata structures
 
-
+__END__
 
 =pod
+
+=encoding utf-8
 
 =head1 NAME
 
@@ -838,7 +840,7 @@ CPAN::Meta::Validator - validate CPAN distribution metadata structures
 
 =head1 VERSION
 
-version 2.120921
+version 2.132140
 
 =head1 SYNOPSIS
 
@@ -1049,9 +1051,3 @@ This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-
-
-__END__
-
-
-

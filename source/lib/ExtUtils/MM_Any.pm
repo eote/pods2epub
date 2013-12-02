@@ -1,7 +1,7 @@
 package ExtUtils::MM_Any;
 
 use strict;
-our $VERSION = '6.64';
+our $VERSION = '6.72';
 
 use Carp;
 use File::Spec;
@@ -66,7 +66,7 @@ These are methods which help writing cross-platform code.
     my @os_flavor = $mm->os_flavor;
 
 @os_flavor is the style of operating system this is, usually
-corresponding to the MM_*.pm file we're using.  
+corresponding to the MM_*.pm file we're using.
 
 The first element of @os_flavor is the major family (ie. Unix,
 Windows, VMS, OS/2, etc...) and the rest are sub families.
@@ -80,7 +80,7 @@ Some examples:
     MacOS X        ('Unix',  'Darwin', 'MacOS', 'MacOS X')
     OS/2           ('OS/2')
 
-This is used to write code for styles of operating system.  
+This is used to write code for styles of operating system.
 See os_flavor_is() for use.
 
 
@@ -236,7 +236,7 @@ sub echo {
     $opts->{allow_variables} = 0 unless defined $opts->{allow_variables};
 
     my $ql_opts = { allow_variables => $opts->{allow_variables} };
-    my @cmds = map { '$(NOECHO) $(ECHO) '.$self->quote_literal($_, $ql_opts) } 
+    my @cmds = map { '$(NOECHO) $(ECHO) '.$self->quote_literal($_, $ql_opts) }
                split /\n/, $text;
     if( $file ) {
         my $redirect = $opts->{append} ? '>>' : '>';
@@ -531,10 +531,10 @@ clean :: clean_subdirs
 #     push @dirs, qw($(INST_ARCHLIB) $(INST_LIB)
 #                    $(INST_BIN) $(INST_SCRIPT)
 #                    $(INST_MAN1DIR) $(INST_MAN3DIR)
-#                    $(INST_LIBDIR) $(INST_ARCHLIBDIR) $(INST_AUTODIR) 
+#                    $(INST_LIBDIR) $(INST_ARCHLIBDIR) $(INST_AUTODIR)
 #                    $(INST_STATIC) $(INST_DYNAMIC) $(INST_BOOT)
 #                 );
-                  
+
 
     if( $attribs{FILES} ) {
         # Use @dirs because we don't know what's in here.
@@ -543,7 +543,7 @@ clean :: clean_subdirs
                         split /\s+/, $attribs{FILES}   ;
     }
 
-    push(@files, qw[$(MAKE_APERL_FILE) 
+    push(@files, qw[$(MAKE_APERL_FILE)
                     MYMETA.json MYMETA.yml perlmain.c tmon.out mon.out so_locations
                     blibdirs.ts pm_to_blib pm_to_blib.ts
                     *$(OBJ_EXT) *$(LIB_EXT) perl.exe perl perl$(EXE_EXT)
@@ -556,7 +556,13 @@ clean :: clean_subdirs
     push(@files, $self->catfile('$(INST_ARCHAUTODIR)','extralibs.ld'));
 
     # core files
-    push(@files, qw[core core.*perl.*.? *perl.core]);
+    if ($^O eq 'vos') {
+        push(@files, qw[perl*.kp]);
+    }
+    else {
+        push(@files, qw[core core.*perl.*.? *perl.core]);
+    }
+
     push(@files, map { "core." . "[0-9]"x$_ } (1..5));
 
     # OS specific things to clean up.  Use @dirs since we don't know
@@ -572,6 +578,7 @@ clean :: clean_subdirs
 
     # Leave Makefile.old around for realclean
     push @m, <<'MAKE';
+	- $(NOECHO) $(RM_F) $(MAKEFILE_OLD)
 	- $(MV) $(FIRST_MAKEFILE) $(MAKEFILE_OLD) $(DEV_NULL)
 MAKE
 
@@ -604,7 +611,7 @@ NOOP_FRAG
 
     for my $dir (@{$self->{DIR}}) {
         my $subclean = $self->oneliner(sprintf <<'CODE', $dir);
-chdir '%s';  system '$(MAKE) clean' if -f '$(FIRST_MAKEFILE)';
+exit 0 unless chdir '%s';  system '$(MAKE) clean' if -f '$(FIRST_MAKEFILE)';
 CODE
 
         $clean .= "\t$subclean\n";
@@ -625,7 +632,7 @@ Because depending on a directory to just ensure it exists doesn't work
 too well (the modified time changes too often) dir_target() creates a
 .exists file in the created directory.  It is this you should depend on.
 For portability purposes you should use the $(DIRFILESEP) macro rather
-than a '/' to seperate the directory from the file.
+than a '/' to separate the directory from the file.
 
     yourdirectory$(DIRFILESEP).exists
 
@@ -683,7 +690,7 @@ MAKE_FRAG
 =head3 dist_test
 
 Defines a target that produces the distribution in the
-scratchdirectory, and runs 'perl Makefile.PL; make ;make test' in that
+scratch directory, and runs 'perl Makefile.PL; make ;make test' in that
 subdirectory.
 
 =cut
@@ -816,13 +823,13 @@ MAKE_FRAG
         $self->{META_ADD}   || {},
         $self->{META_MERGE} || {},
     );
-    
+
     _fix_metadata_before_conversion( \%metadata );
 
     # paper over validation issues, but still complain, necessary because
     # there's no guarantee that the above will fix ALL errors
     my $meta = eval { CPAN::Meta->create( \%metadata, { lazy_validation => 1 } ) };
-    warn $@ if $@ and 
+    warn $@ if $@ and
                $@ !~ /encountered CODE.*, but JSON can only represent references to arrays or hashes/;
 
     # use the original metadata straight if the conversion failed
@@ -919,7 +926,7 @@ sub _fix_metadata_before_conversion {
 
     my @pairs = _sort_pairs($sort_sub, \%hash);
 
-Sorts the pairs of a hash based on keys ordered according 
+Sorts the pairs of a hash based on keys ordered according
 to C<$sort_sub>.
 
 =end private
@@ -980,7 +987,7 @@ sub metafile_data {
 
         generated_by => "ExtUtils::MakeMaker version $ExtUtils::MakeMaker::VERSION",
         'meta-spec'  => {
-            url         => 'http://module-build.sourceforge.net/META-spec-v1.4.html', 
+            url         => 'http://module-build.sourceforge.net/META-spec-v1.4.html',
             version     => 1.4
         },
     );
@@ -999,7 +1006,13 @@ sub metafile_data {
         };
     }
 
-    %meta = $self->_add_requirements_to_meta_v1_4( %meta );
+    {
+      my $vers = _metaspec_version( $meta_add, $meta_merge );
+      my $method = $vers =~ m!^2!
+               ? '_add_requirements_to_meta_v2'
+               : '_add_requirements_to_meta_v1_4';
+      %meta = $self->$method( %meta );
+    }
 
     while( my($key, $val) = each %$meta_add ) {
         $meta{$key} = $val;
@@ -1016,6 +1029,17 @@ sub metafile_data {
 =begin private
 
 =cut
+
+sub _metaspec_version {
+  my ( $meta_add, $meta_merge ) = @_;
+  return $meta_add->{'meta-spec'}->{version}
+    if defined $meta_add->{'meta-spec'}
+       and defined $meta_add->{'meta-spec'}->{version};
+  return $meta_merge->{'meta-spec'}->{version}
+    if defined $meta_merge->{'meta-spec'}
+       and  defined $meta_merge->{'meta-spec'}->{version};
+  return '1.4';
+}
 
 sub _add_requirements_to_meta_v1_4 {
     my ( $self, %meta ) = @_;
@@ -1103,24 +1127,24 @@ sub _normalize_version {
 
 Implements a fake YAML dumper for a hash given
 as a list of pairs. No quoting/escaping is done. Keys
-are supposed to be strings. Values are undef, strings, 
+are supposed to be strings. Values are undef, strings,
 hash refs or array refs of strings.
 
 Supported options are:
 
     delta => STR - indentation delta
     use_header => BOOL - whether to include a YAML header
-    indent => STR - a string of spaces 
+    indent => STR - a string of spaces
           default: ''
 
     max_key_length => INT - maximum key length used to align
         keys and values of the same hash
         default: 20
-    key_sort => CODE - a sort sub 
+    key_sort => CODE - a sort sub
             It may be undef, which means no sorting by keys
         default: sub { lc $a cmp lc $b }
 
-    customs => HASH - special options for certain keys 
+    customs => HASH - special options for certain keys
            (whose values are hashes themselves)
         may contain: max_key_length, key_sort, customs
 
@@ -1136,8 +1160,8 @@ sub _dump_hash {
     # Use a list to preserve order.
     my @pairs;
 
-    my $k_sort 
-        = exists $options->{key_sort} ? $options->{key_sort} 
+    my $k_sort
+        = exists $options->{key_sort} ? $options->{key_sort}
                                       : sub { lc $a cmp lc $b };
     if ($k_sort) {
         croak "'key_sort' should be a coderef" unless ref $k_sort eq 'CODE';
@@ -1173,7 +1197,7 @@ sub _dump_hash {
                         $k_options{$k} = $k_custom{$k} if exists $k_custom{$k};
                     }
                 }
-                $yaml .= $indent . "$key:\n" 
+                $yaml .= $indent . "$key:\n"
                   . _dump_hash(\%k_options, %$val);
             }
             else {
@@ -1233,8 +1257,8 @@ sub metafile_file {
     my $self = shift;
 
     my %dump_options = (
-        use_header => 1, 
-        delta      => ' ' x 4, 
+        use_header => 1,
+        delta      => ' ' x 4,
         key_sort   => undef,
     );
     return _dump_hash(\%dump_options, @_);
@@ -1332,7 +1356,7 @@ sub _mymeta_from_meta {
       };
       last if $meta;
     }
-    return undef unless $meta;
+    return unless $meta;
 
     # META.yml before 6.25_01 cannot be trusted.  META.yml lived in the source directory.
     # There was a good chance the author accidentally uploaded a stale META.yml if they
@@ -1341,7 +1365,7 @@ sub _mymeta_from_meta {
         $meta->{generated_by} =~ /ExtUtils::MakeMaker version ([\d\._]+)/) {
         my $eummv = do { local $^W = 0; $1+0; };
         if ($eummv < 6.2501) {
-            return undef;
+            return;
         }
     }
 
@@ -1365,7 +1389,7 @@ sub write_mymeta {
     return unless _has_cpan_meta();
 
     _fix_metadata_before_conversion( $mymeta );
-    
+
     # this can still blow up
     # not sure if i should just eval this and skip file creation if it
     # blows up
@@ -1411,9 +1435,9 @@ sub realclean {
     { my(%f) = map { ($_ => 1) } @files;  @files = keys %f; }
     { my(%d) = map { ($_ => 1) } @dirs;   @dirs  = keys %d; }
 
-    my $rm_cmd  = join "\n\t", map { "$_" } 
+    my $rm_cmd  = join "\n\t", map { "$_" }
                     $self->split_command('- $(RM_F)',  @files);
-    my $rmf_cmd = join "\n\t", map { "$_" } 
+    my $rmf_cmd = join "\n\t", map { "$_" }
                     $self->split_command('- $(RM_RF)', @dirs);
 
     my $m = sprintf <<'MAKE', $rm_cmd, $rmf_cmd;
@@ -1499,7 +1523,7 @@ sub distsignature_target {
     my $self = shift;
 
     my $add_sign = $self->oneliner(<<'CODE', ['-MExtUtils::Manifest=maniadd']);
-eval { maniadd({q{SIGNATURE} => q{Public-key signature (added by MakeMaker)}}) } 
+eval { maniadd({q{SIGNATURE} => q{Public-key signature (added by MakeMaker)}}) }
     or print "Could not add SIGNATURE to MANIFEST: $${'@'}\n"
 CODE
 
@@ -1574,6 +1598,13 @@ sub init_ABSTRACT {
             carp "WARNING: Setting ABSTRACT via file ".
                  "'$self->{ABSTRACT_FROM}' failed\n";
     }
+
+    if ($self->{ABSTRACT} && $self->{ABSTRACT} =~ m![[:cntrl:]]+!) {
+            warn "WARNING: ABSTRACT contains control character(s),".
+                 " they will be removed\n";
+            $self->{ABSTRACT} =~ s![[:cntrl:]]+!!g;
+            return;
+    }
 }
 
 =head3 init_INST
@@ -1597,7 +1628,7 @@ sub init_INST {
     unless ($self->{INST_LIB}){
         if ($self->{PERL_CORE}) {
             if (defined $Cross::platform) {
-                $self->{INST_LIB} = $self->{INST_ARCHLIB} = 
+                $self->{INST_LIB} = $self->{INST_ARCHLIB} =
                   $self->catdir($self->{PERL_LIB},"..","xlib",
                                      $Cross::platform);
             }
@@ -1612,7 +1643,7 @@ sub init_INST {
     my @parentdir = split(/::/, $self->{PARENT_NAME});
     $self->{INST_LIBDIR}      = $self->catdir('$(INST_LIB)',     @parentdir);
     $self->{INST_ARCHLIBDIR}  = $self->catdir('$(INST_ARCHLIB)', @parentdir);
-    $self->{INST_AUTODIR}     = $self->catdir('$(INST_LIB)', 'auto', 
+    $self->{INST_AUTODIR}     = $self->catdir('$(INST_LIB)', 'auto',
                                               '$(FULLEXT)');
     $self->{INST_ARCHAUTODIR} = $self->catdir('$(INST_ARCHLIB)', 'auto',
                                               '$(FULLEXT)');
@@ -1662,7 +1693,7 @@ sub init_INSTALL_from_PREFIX {
 
     $self->init_lib2arch;
 
-    # There are often no Config.pm defaults for these new man variables so 
+    # There are often no Config.pm defaults for these new man variables so
     # we fall back to the old behavior which is to use installman*dir
     foreach my $num (1, 3) {
         my $k = 'installsiteman'.$num.'dir';
@@ -1687,7 +1718,7 @@ sub init_INSTALL_from_PREFIX {
       unless $Config{installsitescript};
 
     unless( $Config{installvendorbin} ) {
-        $self->{INSTALLVENDORBIN} ||= $Config{usevendorprefix} 
+        $self->{INSTALLVENDORBIN} ||= $Config{usevendorprefix}
                                     ? $Config{installbin}
                                     : '';
     }
@@ -1698,7 +1729,7 @@ sub init_INSTALL_from_PREFIX {
     }
 
 
-    my $iprefix = $Config{installprefixexp} || $Config{installprefix} || 
+    my $iprefix = $Config{installprefixexp} || $Config{installprefix} ||
                   $Config{prefixexp}        || $Config{prefix} || '';
     my $vprefix = $Config{usevendorprefix}  ? $Config{vendorprefixexp} : '';
     my $sprefix = $Config{siteprefixexp}    || '';
@@ -1742,7 +1773,7 @@ sub init_INSTALL_from_PREFIX {
           unless $Config{'installman'.$num.'dir'};
     }
 
-    my %bin_layouts = 
+    my %bin_layouts =
     (
         bin         => { s => $iprefix,
                          t => 'perl',
@@ -1763,7 +1794,7 @@ sub init_INSTALL_from_PREFIX {
                          t => 'site',
                          d => 'bin' },
     );
-    
+
     my %man_layouts =
     (
         man1dir         => { s => $iprefix,
@@ -1807,7 +1838,7 @@ sub init_INSTALL_from_PREFIX {
                          t => 'site',
                          d => 'site_perl',
                          style => $libstyle, },
-        
+
         archlib     => { s => $iprefix,
                          t => 'perl',
                          d => "$version/$arch",
@@ -1829,7 +1860,7 @@ sub init_INSTALL_from_PREFIX {
             my $Installvar = uc "install$var";
 
             if( $var =~ /arch/ ) {
-                $self->{$Installvar} ||= 
+                $self->{$Installvar} ||=
                   $self->catdir($self->{LIB}, $Config{archname});
             }
             else {
@@ -1857,7 +1888,7 @@ sub init_INSTALL_from_PREFIX {
         $d = "$style/$d" if $style;
         $self->prefixify($installvar, $s, $r, $d);
 
-        warn "  $Installvar == $self->{$Installvar}\n" 
+        warn "  $Installvar == $self->{$Installvar}\n"
           if $Verbose >= 2;
     }
 
@@ -1887,7 +1918,7 @@ $map{script} = $map{bin};
 sub init_INSTALL_from_INSTALL_BASE {
     my $self = shift;
 
-    @{$self}{qw(PREFIX VENDORPREFIX SITEPREFIX PERLPREFIX)} = 
+    @{$self}{qw(PREFIX VENDORPREFIX SITEPREFIX PERLPREFIX)} =
                                                          '$(INSTALL_BASE)';
 
     my %install;
@@ -1896,7 +1927,7 @@ sub init_INSTALL_from_INSTALL_BASE {
             my $uc_thing = uc $thing;
             my $key = "INSTALL".$dir.$uc_thing;
 
-            $install{$key} ||= 
+            $install{$key} ||=
               $self->catdir('$(INSTALL_BASE)', @{$map{$thing}});
         }
     }
@@ -1923,7 +1954,7 @@ MAKEMAKER: path to the MakeMaker module.
 
 MM_VERSION: ExtUtils::MakeMaker Version
 
-MM_REVISION: ExtUtils::MakeMaker version control revision (for backwards 
+MM_REVISION: ExtUtils::MakeMaker version control revision (for backwards
              compat)
 
 VERSION: version of your module
@@ -1960,8 +1991,12 @@ sub init_VERSION {
         }
     }
 
-    # strip blanks
     if (defined $self->{VERSION}) {
+        if ( $self->{VERSION} !~ /^\s*v?[\d_\.]+\s*$/ ) {
+          require version;
+          my $normal = eval { version->parse( $self->{VERSION} ) };
+          $self->{VERSION} = $normal if defined $normal;
+        }
         $self->{VERSION} =~ s/^\s+//;
         $self->{VERSION} =~ s/\s+$//;
     }
@@ -1977,7 +2012,7 @@ sub init_VERSION {
 
     # Graham Barr and Paul Marquess had some ideas how to ensure
     # version compatibility between the *.pm file and the
-    # corresponding *.xs file. The bottomline was, that we need an
+    # corresponding *.xs file. The bottom line was, that we need an
     # XS_VERSION macro that defaults to VERSION:
     $self->{XS_VERSION} ||= $self->{VERSION};
 
@@ -2006,12 +2041,12 @@ Defines at least these macros.
   SHELL             Program used to run shell commands
 
   ECHO              Print text adding a newline on the end
-  RM_F              Remove a file 
-  RM_RF             Remove a directory          
-  TOUCH             Update a file's timestamp   
-  TEST_F            Test for a file's existence 
-  CP                Copy a file                 
-  MV                Move a file                 
+  RM_F              Remove a file
+  RM_RF             Remove a directory
+  TOUCH             Update a file's timestamp
+  TEST_F            Test for a file's existence
+  CP                Copy a file
+  MV                Move a file
   CHMOD             Change permissions on a file
   FALSE             Exit with non-zero
   TRUE              Exit with zero
@@ -2040,13 +2075,13 @@ sub init_tools {
     $self->{CP}       ||= $self->oneliner('cp', ["-MExtUtils::Command"]);
     $self->{MV}       ||= $self->oneliner('mv', ["-MExtUtils::Command"]);
 
-    $self->{MOD_INSTALL} ||= 
+    $self->{MOD_INSTALL} ||=
       $self->oneliner(<<'CODE', ['-MExtUtils::Install']);
 install([ from_to => {@ARGV}, verbose => '$(VERBINST)', uninstall_shadows => '$(UNINST)', dir_mode => '$(PERM_DIR)' ]);
 CODE
     $self->{DOC_INSTALL} ||= $self->oneliner('perllocal_install', ["-MExtUtils::Command::MM"]);
     $self->{UNINSTALL}   ||= $self->oneliner('uninstall', ["-MExtUtils::Command::MM"]);
-    $self->{WARN_IF_OLD_PACKLIST} ||= 
+    $self->{WARN_IF_OLD_PACKLIST} ||=
       $self->oneliner('warn_if_old_packlist', ["-MExtUtils::Command::MM"]);
     $self->{FIXIN}       ||= $self->oneliner('MY->fixin(shift)', ["-MExtUtils::MY"]);
     $self->{EQUALIZE_TIMESTAMP} ||= $self->oneliner('eqtime', ["-MExtUtils::Command"]);
@@ -2074,7 +2109,7 @@ CODE
     # Not everybody uses -f to indicate "use this Makefile instead"
     $self->{USEMAKEFILE}        ||= '-f';
 
-    # Some makes require a wrapper around macros passed in on the command 
+    # Some makes require a wrapper around macros passed in on the command
     # line.
     $self->{MACROSTART}         ||= '';
     $self->{MACROEND}           ||= '';
@@ -2108,7 +2143,7 @@ sub init_others {
         my(@libs) = $self->extliblist($libs);
         if ($libs[0] or $libs[1] or $libs[2]){
             # LD_RUN_PATH now computed by ExtUtils::Liblist
-            ($self->{EXTRALIBS},  $self->{BSLOADLIBS}, 
+            ($self->{EXTRALIBS},  $self->{BSLOADLIBS},
              $self->{LDLOADLIBS}, $self->{LD_RUN_PATH}) = @libs;
             last;
         }
@@ -2146,7 +2181,7 @@ sub init_others {
 sub _fix_libs {
     my($self, $libs) = @_;
 
-    return !defined $libs       ? ['']          : 
+    return !defined $libs       ? ['']          :
            !ref $libs           ? [$libs]       :
            !defined $libs->[0]  ? ['']          :
                                   $libs         ;
@@ -2157,7 +2192,7 @@ sub _fix_libs {
 
     my $make_frag = $MM->tools_other;
 
-Returns a make fragment containing definitions for the macros init_others() 
+Returns a make fragment containing definitions for the macros init_others()
 initializes.
 
 =cut
@@ -2168,7 +2203,7 @@ sub tools_other {
 
     # We set PM_FILTER as late as possible so it can see all the earlier
     # on macro-order sensitive makes such as nmake.
-    for my $tool (qw{ SHELL CHMOD CP MV NOOP NOECHO RM_F RM_RF TEST_F TOUCH 
+    for my $tool (qw{ SHELL CHMOD CP MV NOOP NOECHO RM_F RM_RF TEST_F TOUCH
                       UMASK_NULL DEV_NULL MKPATH EQUALIZE_TIMESTAMP
                       FALSE TRUE
                       ECHO ECHO_N
@@ -2179,7 +2214,7 @@ sub tools_other {
                       USEMAKEFILE
                       PM_FILTER
                       FIXIN
-                    } ) 
+                    } )
     {
         next unless defined $self->{$tool};
         push @m, "$tool = $self->{$tool}\n";
@@ -2194,7 +2229,7 @@ sub tools_other {
   $MM->init_DIRFILESEP;
   my $dirfilesep = $MM->{DIRFILESEP};
 
-Initializes the DIRFILESEP macro which is the seperator between the
+Initializes the DIRFILESEP macro which is the separator between the
 directory and filename in a filepath.  ie. / on Unix, \ on Win32 and
 nothing on VMS.
 
@@ -2206,8 +2241,8 @@ For example:
 Something of a hack but it prevents a lot of code duplication between
 MM_* variants.
 
-Do not use this as a seperator between directories.  Some operating
-systems use different seperators between subdirectories as between
+Do not use this as a separator between directories.  Some operating
+systems use different separators between subdirectories as between
 directories and filenames (for example:  VOLUME:[dir1.dir2]file on VMS).
 
 =head3 init_linker  I<Abstract>
@@ -2236,7 +2271,7 @@ Some OSes do not need these in which case leave it blank.
 
 Initialize any macros which are for platform specific use only.
 
-A typical one is the version number of your OS specific mocule.
+A typical one is the version number of your OS specific module.
 (ie. MM_Unix_VERSION or MM_VMS_VERSION).
 
 =cut
@@ -2309,7 +2344,7 @@ sub POD2MAN_macro {
     my $self = shift;
 
 # Need the trailing '--' so perl stops gobbling arguments and - happens
-# to be an alternative end of line seperator on VMS so we quote it
+# to be an alternative end of line separator on VMS so we quote it
     return <<'END_OF_DEF';
 POD2MAN_EXE = $(PERLRUN) "-MExtUtils::Command::MM" -e pod2man "--"
 POD2MAN = $(POD2MAN_EXE)
@@ -2364,7 +2399,7 @@ pm_to_blib soon.
 sub tool_autosplit {
     my($self, %attribs) = @_;
 
-    my $maxlen = $attribs{MAXLEN} ? '$$AutoSplit::Maxlen=$attribs{MAXLEN};' 
+    my $maxlen = $attribs{MAXLEN} ? '$$AutoSplit::Maxlen=$attribs{MAXLEN};'
                                   : '';
 
     my $asplit = $self->oneliner(sprintf <<'PERL_CODE', $maxlen);
@@ -2421,11 +2456,11 @@ sub arch_check {
         my $arch = (grep length, $self->splitdir($pthinks))[-1];
 
         print <<END unless $self->{UNINSTALLED_PERL};
-Your perl and your Config.pm seem to have different ideas about the 
+Your perl and your Config.pm seem to have different ideas about the
 architecture they are running on.
 Perl thinks: [$arch]
 Config says: [$Config{archname}]
-This may or may not cause problems. Please check your installation of perl 
+This may or may not cause problems. Please check your installation of perl
 if you have problems building this extension.
 END
     }
@@ -2486,7 +2521,7 @@ addition to the usual set.
 =cut
 
 # An empty method here tickled a perl 5.8.1 bug and would return its object.
-sub extra_clean_files { 
+sub extra_clean_files {
     return;
 }
 
@@ -2527,7 +2562,7 @@ installation.
 sub libscan {
     my($self,$path) = @_;
     my($dirs,$file) = ($self->splitpath($path))[1,2];
-    return '' if grep /^(?:RCS|CVS|SCCS|\.svn|_darcs)$/, 
+    return '' if grep /^(?:RCS|CVS|SCCS|\.svn|_darcs)$/,
                      $self->splitdir($dirs), $file;
 
     return $path;
@@ -2622,6 +2657,66 @@ sub _all_prereqs {
     my $self = shift;
 
     return { %{$self->{PREREQ_PM}}, %{$self->{BUILD_REQUIRES}} };
+}
+
+=begin private
+
+=head3 _perl_header_files
+
+  my $perl_header_files= $self->_perl_header_files;
+
+returns a sorted list of header files as found in PERL_SRC or $archlibexp/CORE.
+
+Used by perldepend() in MM_Unix and MM_VMS via _perl_header_files_fragment()
+
+=end private
+
+=cut
+
+sub _perl_header_files {
+    my $self = shift;
+
+    my $header_dir = $self->{PERL_SRC} || $self->catdir($Config{archlibexp}, 'CORE');
+    opendir my $dh, $header_dir
+        or die "Failed to opendir '$header_dir' to find header files: $!";
+
+    # we need to use a temporary here as the sort in scalar context would have undefined results.
+    my @perl_headers= sort grep { /\.h\z/ } readdir($dh);
+
+    closedir $dh;
+
+    return @perl_headers;
+}
+
+=begin private
+
+=head3 _perl_header_files_fragment ($o, $separator)
+
+  my $perl_header_files_fragment= $self->_perl_header_files_fragment("/");
+
+return a Makefile fragment which holds the list of perl header files which
+XS code depends on $(PERL_INC), and sets up the dependency for the $(OBJECT) file.
+
+The $separator argument defaults to "". MM_VMS will set it to "" and MM_UNIX to "/"
+in perldepend(). This reason child subclasses need to control this is that in
+VMS the $(PERL_INC) directory will already have delimiters in it, but in
+UNIX $(PERL_INC) will need a slash between it an the filename. Hypothetically
+win32 could use "\\" (but it doesn't need to).
+
+=end private
+
+=cut
+
+sub _perl_header_files_fragment {
+    my ($self, $separator)= @_;
+    $separator ||= "";
+    return join("\\\n",
+                "PERL_HDRS = ",
+                map {
+                    sprintf( "        \$(PERL_INC)%s%s            ", $separator, $_ )
+                } $self->_perl_header_files()
+           ) . "\n\n"
+           . "\$(OBJECT) : \$(PERL_HDRS)\n";
 }
 
 

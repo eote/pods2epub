@@ -18,8 +18,8 @@ our @Overridable;
 my @Prepend_parent;
 my %Recognized_Att_Keys;
 
-our $VERSION = '6.64';
-$VERSION = eval $VERSION;
+our $VERSION = '6.72';
+$VERSION = eval $VERSION;  ## no critic [BuiltinFunctions::ProhibitStringyEval]
 
 # Emulate something resembling CVS $Revision$
 (our $Revision = $VERSION) =~ s{_}{};
@@ -32,7 +32,7 @@ our @EXPORT    = qw(&WriteMakefile &writeMakefile $Verbose &prompt);
 our @EXPORT_OK = qw($VERSION &neatvalue &mkbootstrap &mksymlists
                     &WriteEmptyMakefile);
 
-# These will go away once the last of the Win32 & VMS specific code is 
+# These will go away once the last of the Win32 & VMS specific code is
 # purged.
 my $Is_VMS     = $^O eq 'VMS';
 my $Is_Win32   = $^O eq 'MSWin32';
@@ -54,7 +54,7 @@ sub WriteMakefile {
     my %att = @_;
 
     _convert_compat_attrs(\%att);
-    
+
     _verify_att(\%att);
 
     my $mm = MM->new(\%att);
@@ -168,7 +168,7 @@ sub _is_of_type {
 
 sub _format_att {
     my $given = shift;
-    
+
     return $given eq ''        ? "string/number"
          : uc $given eq $given ? "$given reference"
          :                       "$given object"
@@ -178,7 +178,7 @@ sub _format_att {
 
 sub prompt ($;$) {  ## no critic
     my($mess, $def) = @_;
-    confess("prompt function called without an argument") 
+    confess("prompt function called without an argument")
         unless defined $mess;
 
     my $isa_tty = -t STDIN && (-t STDOUT || !(-f STDOUT || -c STDOUT)) ;
@@ -269,8 +269,8 @@ sub full_setup {
     INSTALLSITEMAN1DIR      INSTALLSITEMAN3DIR
     INSTALLVENDORMAN1DIR    INSTALLVENDORMAN3DIR
     INSTALLSCRIPT   INSTALLSITESCRIPT  INSTALLVENDORSCRIPT
-    PERL_LIB        PERL_ARCHLIB 
-    SITELIBEXP      SITEARCHEXP 
+    PERL_LIB        PERL_ARCHLIB
+    SITELIBEXP      SITEARCHEXP
 
     INC INCLUDE_EXT LDFROM LIB LIBPERL_A LIBS LICENSE
     LINKTYPE MAKE MAKEAPERL MAKEFILE MAKEFILE_OLD MAN1PODS MAN3PODS MAP_TARGET
@@ -300,11 +300,11 @@ sub full_setup {
     # in Overridable we have subroutines that are used indirectly
 
 
-    @MM_Sections = 
+    @MM_Sections =
         qw(
 
- post_initialize const_config constants platform_constants 
- tool_autosplit tool_xsubpp tools_other 
+ post_initialize const_config constants platform_constants
+ tool_autosplit tool_xsubpp tools_other
 
  makemakerdflt
 
@@ -318,7 +318,7 @@ sub full_setup {
  top_targets blibdirs linkext dlsyms dynamic dynamic_bs
  dynamic_lib static static_lib manifypods processPL
  installbin subdirs
- clean_subdirs clean realclean_subdirs realclean 
+ clean_subdirs clean realclean_subdirs realclean
  metafile signature
  dist_basics dist_core distdir dist_test dist_ci distmeta distsignature
  install force perldepend makefile staticmake test ppd
@@ -329,7 +329,7 @@ sub full_setup {
     push @Overridable, qw[
 
  libscan makeaperl needs_linking
- subdir_x test_via_harness test_via_script 
+ subdir_x test_via_harness test_via_script
 
  init_VERSION init_dist init_INST init_INSTALL init_DEST init_dirscan
  init_PM init_MANPODS init_xs init_PERL init_DIRFILESEP init_linker
@@ -349,10 +349,10 @@ sub full_setup {
     @Recognized_Att_Keys{@MM_Sections} = (1) x @MM_Sections;
 
     # we will use all these variables in the Makefile
-    @Get_from_Config = 
+    @Get_from_Config =
         qw(
-           ar cc cccdlflags ccdlflags dlext dlsrc exe_ext full_ar ld 
-           lddlflags ldflags libc lib_ext obj_ext osname osvers ranlib 
+           ar cc cccdlflags ccdlflags dlext dlsrc exe_ext full_ar ld
+           lddlflags ldflags libc lib_ext obj_ext osname osvers ranlib
            sitelibexp sitearchexp so
           );
 
@@ -447,7 +447,7 @@ sub new {
     }
 
     my $perl_version_ok = eval {
-        local $SIG{__WARN__} = sub { 
+        local $SIG{__WARN__} = sub {
             # simulate "use warnings FATAL => 'all'" for vintage perls
             die @_;
         };
@@ -490,7 +490,7 @@ END
         $pr_version =~ s/(\d+)\.(\d+)_(\d+)/$1.$2$3/;
 
         if (!$installed_file) {
-            warn sprintf "Warning: prerequisite %s %s not found.\n", 
+            warn sprintf "Warning: prerequisite %s %s not found.\n",
               $prereq, $required_version
                    unless $self->{PREREQ_FATAL}
                        or $ENV{PERL_CORE};
@@ -499,7 +499,7 @@ END
         }
         elsif ($pr_version < $required_version ){
             warn sprintf "Warning: prerequisite %s %s not found. We have %s.\n",
-              $prereq, $required_version, ($pr_version || 'unknown version') 
+              $prereq, $required_version, ($pr_version || 'unknown version')
                   unless $self->{PREREQ_FATAL}
                        or $ENV{PERL_CORE};
 
@@ -508,7 +508,7 @@ END
     }
 
     if (%unsatisfied && $self->{PREREQ_FATAL}){
-        my $failedprereqs = join "\n", map {"    $_ $unsatisfied{$_}"} 
+        my $failedprereqs = join "\n", map {"    $_ $unsatisfied{$_}"}
                             sort { $a cmp $b } keys %unsatisfied;
         die <<"END";
 MakeMaker FATAL: prerequisites not found.
@@ -517,7 +517,7 @@ $failedprereqs
 Please install these modules first and rerun 'perl Makefile.PL'.
 END
     }
-    
+
     if (defined $self->{CONFIGURE}) {
         if (ref $self->{CONFIGURE} eq 'CODE') {
             %configure_att = %{&{$self->{CONFIGURE}}};
@@ -574,7 +574,7 @@ END
         }
         if ($self->{PARENT}) {
             $self->{PARENT}->{CHILDREN}->{$newclass} = $self;
-            foreach my $opt (qw(POLLUTE PERL_CORE LINKTYPE)) {
+            foreach my $opt (qw(POLLUTE PERL_CORE LINKTYPE LD OPTIMIZE)) {
                 if (exists $self->{PARENT}->{$opt}
                     and not exists $self->{$opt})
                     {
@@ -941,9 +941,9 @@ sub mv_all_methods {
     # still trying to reduce the list to some reasonable minimum --
     # because I want to make it easier for the user. A.K.
 
-    local $SIG{__WARN__} = sub { 
+    local $SIG{__WARN__} = sub {
         # can't use 'no warnings redefined', 5.6 only
-        warn @_ unless $_[0] =~ /^Subroutine .* redefined/ 
+        warn @_ unless $_[0] =~ /^Subroutine .* redefined/
     };
     foreach my $method (@Overridable) {
 
@@ -978,7 +978,7 @@ sub mv_all_methods {
 
     # We have to clean out %INC also, because the current directory is
     # changed frequently and Graham Barr prefers to get his version
-    # out of a History.pl file which is "required" so woudn't get
+    # out of a History.pl file which is "required" so wouldn't get
     # loaded again in another extension requiring a History.pl
 
     # With perl5.002_01 the deletion of entries in %INC caused Tk-b11
@@ -1127,7 +1127,7 @@ sub clean_versions {
     for my $module (keys %$reqs) {
         my $version = $reqs->{$module};
 
-        if( !defined $version or $version !~ /^[\d_\.]+$/ ) {
+        if( !defined $version or $version !~ /^v?[\d_\.]+$/ ) {
             carp "Unparsable version '$version' for prerequisite $module";
             $reqs->{$module} = 0;
         }
@@ -1196,7 +1196,7 @@ Makefiles with a single invocation of WriteMakefile().
 
 =head2 How To Write A Makefile.PL
 
-See ExtUtils::MakeMaker::Tutorial.
+See L<ExtUtils::MakeMaker::Tutorial>.
 
 The long answer is the rest of the manpage :-)
 
@@ -1225,7 +1225,7 @@ Other interesting targets in the generated Makefile are
 =head2 make test
 
 MakeMaker checks for the existence of a file named F<test.pl> in the
-current directory and if it exists it execute the script with the
+current directory, and if it exists it executes the script with the
 proper set of perl C<-I> options.
 
 MakeMaker also checks for any files matching glob("t/*.t"). It will
@@ -1236,6 +1236,11 @@ If you'd like to see the raw output of your tests, set the
 C<TEST_VERBOSE> variable to true.
 
   make test TEST_VERBOSE=1
+
+If you want to run particular test files, set the C<TEST_FILES> variable.
+It is possible to use globbing with this mechanism.
+
+  make test TEST_FILES='t/foobar.t t/dagobah*.t'
 
 =head2 make testdb
 
@@ -1291,7 +1296,7 @@ searched by perl, run
     perl -le 'print join $/, @INC'
 
 Sometimes older versions of the module you're installing live in other
-directories in @INC.  Because Perl loads the first version of a module it 
+directories in @INC.  Because Perl loads the first version of a module it
 finds, not the newest, you might accidentally get one of these older
 versions even after installing a brand new version.  To delete I<all other
 versions of the module you're installing> (not simply older ones) set the
@@ -1379,12 +1384,12 @@ relatives, then the defaults for INSTALLPRIVLIB, INSTALLARCHLIB,
 INSTALLSCRIPT, etc. will be appropriate, and this incantation will be
 the best:
 
-    perl Makefile.PL; 
-    make; 
+    perl Makefile.PL;
+    make;
     make test
     make install
 
-make install per default writes some documentation of what has been
+make install by default writes some documentation of what has been
 done into the file C<$(INSTALLARCHLIB)/perllocal.pod>. This feature
 can be bypassed by calling make pure_install.
 
@@ -1416,9 +1421,9 @@ is built. You can invoke the corresponding section of the makefile with
 That produces a new perl binary in the current directory with all
 extensions linked in that can be found in INST_ARCHLIB, SITELIBEXP,
 and PERL_ARCHLIB. To do that, MakeMaker writes a new Makefile, on
-UNIX, this is called Makefile.aperl (may be system dependent). If you
-want to force the creation of a new perl, it is recommended, that you
-delete this Makefile.aperl, so the directories are searched-through
+UNIX, this is called F<Makefile.aperl> (may be system dependent). If you
+want to force the creation of a new perl, it is recommended that you
+delete this F<Makefile.aperl>, so the directories are searched through
 for linkable libraries again.
 
 The binary can be installed into the directory where perl normally
@@ -1441,7 +1446,7 @@ or say
 In any case you will be prompted with the correct invocation of the
 C<inst_perl> target that installs the new binary into INSTALLBIN.
 
-make inst_perl per default writes some documentation of what has been
+make inst_perl by default writes some documentation of what has been
 done into the file C<$(INSTALLARCHLIB)/perllocal.pod>. This
 can be bypassed by calling make pure_inst_perl.
 
@@ -1506,12 +1511,12 @@ relationship between INSTALLPRIVLIB and INSTALLARCHLIB is determined
 by Configure at perl compilation time. MakeMaker supports the user who
 sets INSTALLPRIVLIB. If INSTALLPRIVLIB is set, but INSTALLARCHLIB not,
 then MakeMaker defaults the latter to be the same subdirectory of
-INSTALLPRIVLIB as Configure decided for the counterparts in %Config ,
+INSTALLPRIVLIB as Configure decided for the counterparts in %Config,
 otherwise it defaults to INSTALLPRIVLIB. The same relationship holds
 for INSTALLSITELIB and INSTALLSITEARCH.
 
 MakeMaker gives you much more freedom than needed to configure
-internal variables and get different results. It is worth to mention,
+internal variables and get different results. It is worth mentioning
 that make(1) also lets you configure most of the variables that are
 used in the Makefile. But in the majority of situations this will not
 be necessary, and should only be done if the author of a package
@@ -1520,7 +1525,11 @@ recommends it (or you know what you're doing).
 =head2 Using Attributes and Parameters
 
 The following attributes may be specified as arguments to WriteMakefile()
-or as NAME=VALUE pairs on the command line.
+or as NAME=VALUE pairs on the command line. Attributes that became
+available with later versions of MakeMaker are indicated.
+
+In order to maintain portability of attributes with older versions of
+MakeMaker you may want to use L<App::EUMM::Upgrade> with your C<Makefile.PL>.
 
 =over 2
 
@@ -1552,6 +1561,8 @@ builds a PPD package that references a binary of the C<Agent> package,
 located in the C<x86> directory relative to the PPD itself.
 
 =item BUILD_REQUIRES
+
+Available in version 6.5503 and above.
 
 A hash of modules that are needed to build your module but not run it.
 
@@ -1600,6 +1611,8 @@ be determined by some evaluation method.
 
 =item CONFIGURE_REQUIRES
 
+Available in version 6.52 and above.
+
 A hash of modules that are required to run Makefile.PL itself, but not
 to run your distribution.
 
@@ -1633,9 +1646,9 @@ in ext/SDBM_File
 
 =item DISTNAME
 
-A safe filename for the package. 
+A safe filename for the package.
 
-Defaults to NAME above but with :: replaced with -.
+Defaults to NAME below but with :: replaced with -.
 
 For example, Foo::Bar becomes Foo-Bar.
 
@@ -1812,7 +1825,7 @@ directory if INSTALLDIRS is set to site (default).
 =item INSTALLSITEMAN3DIR
 
 These directories get the man pages at 'make install' time if
-INSTALLDIRS=site (default).  Defaults to 
+INSTALLDIRS=site (default).  Defaults to
 $(SITEPREFIX)/man/man$(MAN*EXT).
 
 If set to 'none', no man pages will be installed.
@@ -1875,7 +1888,7 @@ Directory to hold the man pages at 'make' time
 
 =item INST_SCRIPT
 
-Directory, where executable files should be installed during
+Directory where executable files should be installed during
 'make'. Defaults to "./blib/script", just to have a dummy location during
 testing. make install will copy the files in INST_SCRIPT to
 INSTALLSCRIPT.
@@ -1936,7 +1949,9 @@ MakeMaker will turn it into an array with one element.
 
 =item LICENSE
 
-The licensing terms of your distribution.  Generally its "perl" for the
+Available in version 6.31 and above.
+
+The licensing terms of your distribution.  Generally it's "perl" for the
 same license as Perl itself.
 
 See L<Module::Build::API> for the list of options.
@@ -1956,7 +1971,7 @@ parameter lets Makefile.PL know what make quirks to account for when
 generating the Makefile.
 
 MakeMaker also honors the MAKE environment variable.  This parameter
-takes precedent.
+takes precedence.
 
 Currently the only significant values are 'dmake' and 'nmake' for Windows
 users, instructing MakeMaker to generate a Makefile in the flavour of
@@ -1973,7 +1988,7 @@ you what Make you're supposed to invoke the Makefile with.
 
 =item MAKEAPERL
 
-Boolean which tells MakeMaker, that it should include the rules to
+Boolean which tells MakeMaker that it should include the rules to
 make a perl. This is handled automatically as a switch by
 MakeMaker. The user normally does not need it.
 
@@ -2012,14 +2027,16 @@ Example similar to MAN1PODS.
 
 =item MAP_TARGET
 
-If it is intended, that a new perl binary be produced, this variable
+If it is intended that a new perl binary be produced, this variable
 may hold a name for that binary. Defaults to perl
 
 =item META_ADD
 
 =item META_MERGE
 
-A hashrefs of items to add to the CPAN Meta file (F<META.yml> or
+Available in version 6.46 and above.
+
+A hashref of items to add to the CPAN Meta file (F<META.yml> or
 F<META.json>).
 
 They differ in how they behave if they have the same key as the
@@ -2029,15 +2046,37 @@ own.  META_MERGE will merge its value with the default.
 Unless you want to override the defaults, prefer META_MERGE so as to
 get the advantage of any future defaults.
 
+By default CPAN Meta specification C<1.4> is used. In order to use
+CPAN Meta specification C<2.0>, indicate with C<meta-spec> the version
+you want to use.
+
+  META_MERGE        => {
+
+    "meta-spec" => { version => 2 },
+
+    resources => {
+
+      repository => {
+          type => 'git',
+          url => 'git://github.com/Perl-Toolchain-Gang/ExtUtils-MakeMaker.git',
+          web => 'https://github.com/Perl-Toolchain-Gang/ExtUtils-MakeMaker',
+      },
+
+    },
+
+  },
+
 =item MIN_PERL_VERSION
+
+Available in version 6.48 and above.
 
 The minimum required version of Perl for this distribution.
 
-Either 5.006001 or 5.6.1 format is acceptable.
+Either the 5.006001 or the 5.6.1 format is acceptable.
 
 =item MYEXTLIB
 
-If the extension links to a library that it builds set this to the
+If the extension links to a library that it builds, set this to the
 name of the library (see SDBM_File)
 
 =item NAME
@@ -2064,7 +2103,7 @@ this boolean variable yourself.
 
 =item NOECHO
 
-Command so make does not print the literal commands its running.
+Command so make does not print the literal commands it's running.
 
 By setting it to an empty string you can generate a Makefile that
 prints all commands. Mainly used in debugging MakeMaker itself.
@@ -2111,7 +2150,7 @@ passed to subdirectory makes.
 
 =item PERL
 
-Perl binary for tasks that can be done by miniperl
+Perl binary for tasks that can be done by miniperl.
 
 =item PERL_CORE
 
@@ -2162,7 +2201,7 @@ which rely on special alignment which is not provided by Perl's malloc().
 
 =back
 
-B<NOTE.>  Negligence to set this flag in I<any one> of loaded extension
+B<NOTE.>  Neglecting to set this flag in I<any one> of the loaded extension
 nullifies many advantages of Perl's malloc(), such as better usage of
 system resources, error detection, memory usage reporting, catchable failure
 of memory allocations, etc.
@@ -2171,7 +2210,7 @@ of memory allocations, etc.
 
 Directory under which core modules are to be installed.
 
-Defaults to $Config{installprefixexp} falling back to
+Defaults to $Config{installprefixexp}, falling back to
 $Config{installprefix}, $Config{prefixexp} or $Config{prefix} should
 $Config{installprefixexp} not exist.
 
@@ -2234,11 +2273,11 @@ In this case the program will be run multiple times using each target file.
     perl bin/foobar.PL bin/foobar2
 
 PL files are normally run B<after> pm_to_blib and include INST_LIB and
-INST_ARCH in its C<@INC> so the just built modules can be
+INST_ARCH in their C<@INC>, so the just built modules can be
 accessed... unless the PL file is making a module (or anything else in
 PM) in which case it is run B<before> pm_to_blib and does not include
 INST_LIB and INST_ARCH in its C<@INC>.  This apparently odd behavior
-is there for backwards compatibility (and its somewhat DWIM).
+is there for backwards compatibility (and it's somewhat DWIM).
 
 
 =item PM
@@ -2313,7 +2352,7 @@ guess about where to place things under the new PREFIX based on your
 Config defaults.  Failing that, it will fall back to a structure
 which should be sensible for your platform.
 
-If you specify LIB or any INSTALL* variables they will not be effected
+If you specify LIB or any INSTALL* variables they will not be affected
 by the PREFIX.
 
 =item PREREQ_FATAL
@@ -2325,7 +2364,10 @@ will C<die> instead of simply informing the user of the missing dependencies.
 It is I<extremely> rare to have to use C<PREREQ_FATAL>. Its use by module
 authors is I<strongly discouraged> and should never be used lightly.
 
-Module installation tools have ways of resolving umet dependencies but
+For dependencies that are required in order to run C<Makefile.PL>,
+see C<CONFIGURE_REQUIRES>.
+
+Module installation tools have ways of resolving unmet dependencies but
 to do that they need a F<Makefile>.  Using C<PREREQ_FATAL> breaks this.
 That's bad.
 
@@ -2370,7 +2412,7 @@ added to the output as an additional line of the form:
 
   $MIN_PERL_VERSION = '5.008001';
 
-If BUILD_REQUIRES is not empty, it will be dumped as $BUILD_REQUIRES hasref.
+If BUILD_REQUIRES is not empty, it will be dumped as $BUILD_REQUIRES hashref.
 
 =item PRINT_PREREQ
 
@@ -2470,7 +2512,9 @@ but these will fail:
     local $VERSION      = '1.02';
     local $FOO::VERSION = '1.30';
 
-"Version strings" are incompatible should not be used.
+(Putting C<my> or C<local> on the preceding line will work o.k.)
+
+"Version strings" are incompatible and should not be used.
 
     # Bad
     $VERSION = 1.2.3;
@@ -2478,13 +2522,11 @@ but these will fail:
 
 L<version> objects are fine.  As of MakeMaker 6.35 version.pm will be
 automatically loaded, but you must declare the dependency on version.pm.
-For compatibility with older MakeMaker you should load on the same line 
+For compatibility with older MakeMaker you should load on the same line
 as $VERSION is declared.
 
     # All on one line
     use version; our $VERSION = qv(1.2.3);
-
-(Putting C<my> or C<local> on the preceding line will work o.k.)
 
 The file named in VERSION_FROM is not added as a dependency to
 Makefile. This is not really correct, but it would be a major pain
@@ -2665,7 +2707,7 @@ The correct code is C<< MAN3PODS => { } >>.
 
 =head2 Hintsfile support
 
-MakeMaker.pm uses the architecture specific information from
+MakeMaker.pm uses the architecture-specific information from
 Config.pm. In addition it evaluates architecture specific hints files
 in a C<hints/> directory. The hints files are expected to be named
 like their counterparts in C<PERL_SRC/hints>, but with an C<.pl> file
@@ -2706,6 +2748,11 @@ details)
 does a realclean first and then the distcheck. Note that this is not
 needed to build a new distribution as long as you are sure that the
 MANIFEST file is ok.
+
+=item    make veryclean
+
+does a realclean first and then removes backup files such as C<*~>,
+C<*.bak>, C<*.old> and C<*.orig>
 
 =item    make manifest
 
@@ -2860,7 +2907,7 @@ function returns the $value selected by the user.
 If C<prompt()> detects that it is not running interactively and there
 is nothing on STDIN or if the PERL_MM_USE_DEFAULT environment variable
 is set to true, the $default will be used without prompting.  This
-prevents automated processes from blocking on user input. 
+prevents automated processes from blocking on user input.
 
 If no $default is provided an empty string will be used instead.
 
@@ -2916,13 +2963,13 @@ Send patches and ideas to C<makemaker@perl.org>.
 Send bug reports via http://rt.cpan.org/.  Please send your
 generated Makefile along with your report.
 
-For more up-to-date information, see L<http://www.makemaker.org>.
+For more up-to-date information, see L<https://metacpan.org/release/ExtUtils-MakeMaker>.
 
 Repository available at L<https://github.com/Perl-Toolchain-Gang/ExtUtils-MakeMaker>.
 
 =head1 LICENSE
 
-This program is free software; you can redistribute it and/or 
+This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 See L<http://www.perl.com/perl/misc/Artistic.html>

@@ -2,7 +2,7 @@ use 5.006;
 use strict;
 use warnings;
 package CPAN::Meta::Converter;
-our $VERSION = '2.120921'; # VERSION
+our $VERSION = '2.132140'; # VERSION
 
 
 use CPAN::Meta::Validator;
@@ -78,6 +78,12 @@ sub _ucfirst_custom {
   my $key = shift;
   $key = ucfirst $key unless $key =~ /[A-Z]/;
   return $key;
+}
+
+sub _no_prefix_ucfirst_custom {
+  my $key = shift;
+  $key =~ s/^x_//;
+  return _ucfirst_custom($key);
 }
 
 sub _change_meta_spec {
@@ -307,7 +313,7 @@ sub _is_module_name {
 }
 
 sub _clean_version {
-  my ($element, $key, $meta, $to_version) = @_;
+  my ($element) = @_;
   return 0 if ! defined $element;
 
   $element =~ s{^\s*}{};
@@ -653,7 +659,7 @@ my $resource_downgrade_spec = {
   homepage   => \&_url_or_drop,
   bugtracker => sub { return $_[0]->{web} },
   repository => sub { return $_[0]->{url} || $_[0]->{web} },
-  ':custom'  => \&_ucfirst_custom,
+  ':custom'  => \&_no_prefix_ucfirst_custom,
 };
 
 sub _downgrade_resources {
@@ -676,12 +682,12 @@ sub _release_status_from_version {
 
 my $provides_spec = {
   file => \&_keep,
-  version => \&_clean_version,
+  version => \&_keep,
 };
 
 my $provides_spec_2 = {
   file => \&_keep,
-  version => \&_clean_version,
+  version => \&_keep,
   ':custom'  => \&_prefix_custom,
 };
 
@@ -692,6 +698,8 @@ sub _provides {
   my $new_data = {};
   for my $k ( keys %$element ) {
     $new_data->{$k} = _convert($element->{$k}, $spec, $to_version);
+    $new_data->{$k}{version} = _clean_version($element->{$k}{version})
+      if exists $element->{$k}{version};
   }
   return $new_data;
 }
@@ -1260,9 +1268,11 @@ sub convert {
 
 # ABSTRACT: Convert CPAN distribution metadata structures
 
-
+__END__
 
 =pod
+
+=encoding utf-8
 
 =head1 NAME
 
@@ -1270,7 +1280,7 @@ CPAN::Meta::Converter - Convert CPAN distribution metadata structures
 
 =head1 VERSION
 
-version 2.120921
+version 2.132140
 
 =head1 SYNOPSIS
 
@@ -1386,8 +1396,3 @@ This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-
-
-__END__
-
-

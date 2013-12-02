@@ -2,7 +2,7 @@ use 5.006;
 use strict;
 use warnings;
 package CPAN::Meta;
-our $VERSION = '2.120921'; # VERSION
+our $VERSION = '2.132140'; # VERSION
 
 
 use Carp qw(carp croak);
@@ -336,9 +336,11 @@ sub TO_JSON {
 
 # ABSTRACT: the distribution metadata for a CPAN dist
 
-
+__END__
 
 =pod
+
+=encoding utf-8
 
 =head1 NAME
 
@@ -346,25 +348,39 @@ CPAN::Meta - the distribution metadata for a CPAN dist
 
 =head1 VERSION
 
-version 2.120921
+version 2.132140
 
 =head1 SYNOPSIS
 
-  my $meta = CPAN::Meta->load_file('META.json');
+    use v5.10;
+    use strict;
+    use warnings;
+    use CPAN::Meta;
+    use Module::Load;
 
-  printf "testing requirements for %s version %s\n",
+    my $meta = CPAN::Meta->load_file('META.json');
+
+    printf "testing requirements for %s version %s\n",
     $meta->name,
     $meta->version;
 
-  my $prereqs = $meta->requirements_for('configure');
+    my $prereqs = $meta->effective_prereqs;
 
-  for my $module ($prereqs->required_modules) {
-    my $version = get_local_version($module);
-
-    die "missing required module $module" unless defined $version;
-    die "version for $module not in range"
-      unless $prereqs->accepts_module($module, $version);
-  }
+    for my $phase ( qw/configure runtime build test/ ) {
+        say "Requirements for $phase:";
+        my $reqs = $prereqs->requirements_for($phase, "requires");
+        for my $module ( sort $reqs->required_modules ) {
+            my $status;
+            if ( eval { load $module unless $module eq 'perl'; 1 } ) {
+                my $version = $module eq 'perl' ? $] : $module->VERSION;
+                $status = $reqs->accepts_module($module, $version)
+                        ? "$version ok" : "$version not ok";
+            } else {
+                $status = "missing"
+            };
+            say "  $module ($status)";
+        }
+    }
 
 =head1 DESCRIPTION
 
@@ -513,7 +529,7 @@ exception will be raised.
 
   my $copy = $meta->as_struct( \%options );
 
-This method returns a deep copy of the object's metadata as an unblessed has
+This method returns a deep copy of the object's metadata as an unblessed hash
 reference.  It takes an optional hashref of options.  If the hashref contains
 a C<version> argument, the copied metadata will be converted to the version
 of the specification and returned.  For example:
@@ -675,7 +691,7 @@ L<CPAN::Meta::Validator>
 =head2 Bugs / Feature Requests
 
 Please report any bugs or feature requests through the issue tracker
-at L<http://rt.cpan.org/Public/Dist/Display.html?Name=CPAN-Meta>.
+at L<https://github.com/Perl-Toolchain-Gang/cpan-meta/issues>.
 You will be notified automatically of any progress on your issue.
 
 =head2 Source Code
@@ -683,7 +699,7 @@ You will be notified automatically of any progress on your issue.
 This is open source software.  The code repository is available for
 public review and contribution under the terms of the license.
 
-L<http://github.com/dagolden/cpan-meta>
+L<https://github.com/dagolden/cpan-meta>
 
   git clone git://github.com/dagolden/cpan-meta.git
 
@@ -701,6 +717,80 @@ Ricardo Signes <rjbs@cpan.org>
 
 =back
 
+=head1 CONTRIBUTORS
+
+=over 4
+
+=item *
+
+Ansgar Burchardt <ansgar@cpan.org>
+
+=item *
+
+Avar Arnfjord Bjarmason <avar@cpan.org>
+
+=item *
+
+Christopher J. Madsen <cjm@cpan.org>
+
+=item *
+
+Cory G Watson <gphat@cpan.org>
+
+=item *
+
+Damyan Ivanov <dam@cpan.org>
+
+=item *
+
+Eric Wilhelm <ewilhelm@cpan.org>
+
+=item *
+
+Gregor Hermann <gregoa@debian.org>
+
+=item *
+
+Karen Etheridge <ether@cpan.org>
+
+=item *
+
+Ken Williams <kwilliams@cpan.org>
+
+=item *
+
+Kenichi Ishigaki <ishigaki@cpan.org>
+
+=item *
+
+Lars Dieckow <daxim@cpan.org>
+
+=item *
+
+Leon Timmermans <leont@cpan.org>
+
+=item *
+
+Mark Fowler <markf@cpan.org>
+
+=item *
+
+Michael G. Schwern <mschwern@cpan.org>
+
+=item *
+
+Olaf Alders <olaf@wundersolutions.com>
+
+=item *
+
+Olivier Mengué <dolmen@cpan.org>
+
+=item *
+
+Randy Sims <randys@thepierianspring.org>
+
+=back
+
 =head1 COPYRIGHT AND LICENSE
 
 This software is copyright (c) 2010 by David Golden and Ricardo Signes.
@@ -709,8 +799,3 @@ This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-
-
-__END__
-
-

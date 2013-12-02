@@ -11,7 +11,7 @@ use 5.006;
 
 use strict;
 use warnings;
-our $VERSION = '6.64';
+our $VERSION = '6.72';
 
 use ExtUtils::MakeMaker::Config;
 use Cwd 'cwd';
@@ -151,6 +151,8 @@ sub _unix_os2_ext {
             elsif ( -f ( $fullname = "$thispth/$thislib$Config_libext" ) ) {
             }
             elsif ( -f ( $fullname = "$thispth/lib$thislib.dll$Config_libext" ) ) {
+            }
+            elsif ( $^O eq 'cygwin' && -f ( $fullname = "$thispth/$thislib.dll" ) ) {
             }
             elsif ( -f ( $fullname = "$thispth/Slib$thislib$Config_libext" ) ) {
             }
@@ -422,7 +424,8 @@ sub _win32_try_attach_extension {
 sub _win32_lib_extensions {
     my %extensions;
     $extensions{ $Config{'lib_ext'} } = 1 if $Config{'lib_ext'};
-    $extensions{".lib"} = 1;
+    $extensions{".dll.a"} = 1 if $extensions{".a"};
+    $extensions{".lib"}   = 1;
     return [ keys %extensions ];
 }
 

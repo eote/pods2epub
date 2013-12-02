@@ -374,21 +374,21 @@ sub abs2rel {
     if (grep $self->file_name_is_absolute($_), $path, $base) {
 	($path, $base) = map $self->rel2abs($_), $path, $base;
 
-    my ($path_volume) = $self->splitpath($path, 1);
-    my ($base_volume) = $self->splitpath($base, 1);
+	my ($path_volume) = $self->splitpath($path, 1);
+	my ($base_volume) = $self->splitpath($base, 1);
 
-    # Can't relativize across volumes
-    return $path unless $path_volume eq $base_volume;
+	# Can't relativize across volumes
+	return $path unless $path_volume eq $base_volume;
 
 	$path_directories = ($self->splitpath($path, 1))[1];
 	$base_directories = ($self->splitpath($base, 1))[1];
 
-    # For UNC paths, the user might give a volume like //foo/bar that
-    # strictly speaking has no directory portion.  Treat it as if it
-    # had the root directory for that volume.
-    if (!length($base_directories) and $self->file_name_is_absolute($base)) {
-      $base_directories = $self->rootdir;
-    }
+	# For UNC paths, the user might give a volume like //foo/bar that
+	# strictly speaking has no directory portion.  Treat it as if it
+	# had the root directory for that volume.
+	if (!length($base_directories) and $self->file_name_is_absolute($base)) {
+	    $base_directories = $self->rootdir;
+	}
     }
     else {
 	my $wd= ($self->splitpath($self->_cwd(), 1))[1];

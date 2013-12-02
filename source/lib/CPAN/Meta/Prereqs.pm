@@ -2,7 +2,7 @@ use 5.006;
 use strict;
 use warnings;
 package CPAN::Meta::Prereqs;
-our $VERSION = '2.120921'; # VERSION
+our $VERSION = '2.132140'; # VERSION
 
 
 use Carp qw(confess);
@@ -139,9 +139,11 @@ sub clone {
 
 # ABSTRACT: a set of distribution prerequisites by phase and type
 
-
+__END__
 
 =pod
+
+=encoding utf-8
 
 =head1 NAME
 
@@ -149,7 +151,7 @@ CPAN::Meta::Prereqs - a set of distribution prerequisites by phase and type
 
 =head1 VERSION
 
-version 2.120921
+version 2.132140
 
 =head1 DESCRIPTION
 
@@ -268,9 +270,3 @@ This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-
-
-__END__
-
-
-

@@ -8,7 +8,9 @@
 package Config;
 use strict;
 use warnings;
-use vars '%Config';
+use vars '%Config', '$VERSION';
+
+$VERSION = "5.018001";
 
 # Skip @Config::EXPORT because it only contains %Config, which we special
 # case below as it's not a function. @Config::EXPORT won't change in the
@@ -54,11 +56,11 @@ sub import {
     return;
 }
 
-die "Perl lib version (5.16.3) doesn't match executable '$0' version ($])"
+die "Perl lib version (5.18.1) doesn't match executable '$0' version ($])"
     unless $^V;
 
-$^V eq 5.16.3
-    or die "Perl lib version (5.16.3) doesn't match executable '$0' version (" .
+$^V eq 5.18.1
+    or die "Perl lib version (5.18.1) doesn't match executable '$0' version (" .
 	sprintf("v%vd",$^V) . ")";
 
 
@@ -84,7 +86,7 @@ sub AUTOLOAD {
 # tie returns the object, so the value returned to require will be true.
 tie %Config, 'Config', {
     archlibexp => 'C:\\strawberry\\perl\\lib',
-    archname => 'MSWin32-x86-multi-thread',
+    archname => 'MSWin32-x86-multi-thread-64int',
     cc => 'gcc',
     d_readlink => undef,
     d_symlink => undef,
@@ -106,7 +108,7 @@ tie %Config, 'Config', {
     so => 'dll',
     useithreads => 'define',
     usevendorprefix => 'define',
-    version => '5.16.3',
+    version => '5.18.1',
 };
 eval {
 	require Portable;

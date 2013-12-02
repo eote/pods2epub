@@ -13,13 +13,16 @@ use Params::Check               qw[check];
 use Module::Load::Conditional   qw[can_load check_install];
 use Locale::Maketext::Simple    Class => 'CPANPLUS', Style => 'gettext';
 
+use vars qw[$VERSION];
+$VERSION = "0.9134";
+
 local $Params::Check::VERBOSE = 1;
 
 =pod
 
 =head1 NAME
 
-CPANPLUS::Internals::Extract
+CPANPLUS::Internals::Extract - internals for archive extraction
 
 =head1 SYNOPSIS
 

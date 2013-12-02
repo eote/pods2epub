@@ -14,10 +14,9 @@ use Package::Constants;
 ### for the version
 require CPANPLUS::Internals;
 
-$VERSION    = $CPANPLUS::Internals::VERSION = $CPANPLUS::Internals::VERSION;
+$VERSION = "0.9134";
 @ISA        = qw[Exporter];
 @EXPORT     = Package::Constants->list( __PACKAGE__ );
-
 
 ### OS to regex map ###
 my %OS = (
@@ -200,6 +199,23 @@ $buffer
 .
                             };
 
+use constant REPORT_MESSAGE_PASS_HEADER
+                            => sub {
+                                my($stage, $buffer) = @_;
+                                return << ".";
+
+Thank you for uploading your work to CPAN.  Congratulations!
+All tests were successful.
+
+TEST RESULTS:
+
+Below is the error stack from stage '$stage':
+
+$buffer
+
+.
+                            };
+
 use constant REPORT_MISSING_PREREQS
                             => sub {
                                 my ($author,$email,@missing) = @_;
@@ -330,6 +346,8 @@ use constant REPORT_TOOLCHAIN_VERSIONS
                                     ExtUtils::ParseXS
                                     File::Spec
                                     Module::Build
+                                    Pod::Parser
+                                    Pod::Simple
                                     Test::Harness
                                     Test::More
                                     version

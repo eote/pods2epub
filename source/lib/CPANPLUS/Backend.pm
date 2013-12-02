@@ -23,7 +23,7 @@ $Params::Check::VERBOSE = 1;
 use vars qw[@ISA $VERSION];
 
 @ISA     = qw[CPANPLUS::Internals];
-$VERSION = $CPANPLUS::Internals::VERSION;
+$VERSION = "0.9134";
 
 ### mark that we're running under CPANPLUS to spawned processes
 $ENV{'PERL5_CPANPLUS_IS_RUNNING'} = $$;
@@ -36,7 +36,7 @@ $ENV{'PERL5_CPANPLUS_IS_VERSION'} = __PACKAGE__->VERSION;
 
 =head1 NAME
 
-CPANPLUS::Backend
+CPANPLUS::Backend - programmer's interface to CPANPLUS
 
 =head1 SYNOPSIS
 
@@ -397,7 +397,7 @@ for my $func (qw[fetch extract install readme files distributions]) {
 
         return CPANPLUS::Backend::RV->new(
                     function    => $func,
-                    ok          => !$flag,
+                    ok          => ( !$flag ? 1 : 0 ),
                     rv          => $href,
                     args        => \%hash,
                 );

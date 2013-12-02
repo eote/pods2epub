@@ -1,6 +1,8 @@
 package CPANPLUS::Error;
 
 use strict;
+use vars qw[$VERSION];
+$VERSION = "0.9134";
 
 use Log::Message private => 0;;
 
@@ -8,7 +10,7 @@ use Log::Message private => 0;;
 
 =head1 NAME
 
-CPANPLUS::Error
+CPANPLUS::Error - error handling for CPANPLUS
 
 =head1 SYNOPSIS
 
@@ -143,7 +145,8 @@ local $| = 1;
 $ERROR_FH   = \*STDERR;
 $MSG_FH     = \*STDOUT;
 
-package Log::Message::Handlers;
+package # Hide from Pause
+  Log::Message::Handlers;
 use Carp ();
 
 {

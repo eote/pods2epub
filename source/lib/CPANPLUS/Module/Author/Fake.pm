@@ -6,8 +6,10 @@ use CPANPLUS::Internals;
 use CPANPLUS::Error;
 
 use strict;
-use vars            qw[@ISA];
+use vars            qw[@ISA $VERSION];
 use Params::Check   qw[check];
+
+$VERSION = "0.9134";
 
 @ISA = qw[CPANPLUS::Module::Author];
 
@@ -17,7 +19,7 @@ $Params::Check::VERBOSE = 1;
 
 =head1 NAME
 
-CPANPLUS::Module::Author::Fake
+CPANPLUS::Module::Author::Fake - dummy author object for CPANPLUS
 
 =head1 SYNOPSIS
 

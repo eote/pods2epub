@@ -4,9 +4,12 @@ use strict;
 use CPANPLUS::Error             qw[error msg];
 use Locale::Maketext::Simple    Class => 'CPANPLUS', Style => 'gettext';
 
+use vars qw[$VERSION];
+$VERSION = "0.9134";
+
 =head1 NAME
 
-CPANPLUS::Shell::Default::Plugins::Source
+CPANPLUS::Shell::Default::Plugins::Source - read in CPANPLUS commands
 
 =head1 SYNOPSIS
 

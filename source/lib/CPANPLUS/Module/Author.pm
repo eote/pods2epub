@@ -6,6 +6,8 @@ use CPANPLUS::Error;
 use CPANPLUS::Internals::Constants;
 use Params::Check               qw[check];
 use Locale::Maketext::Simple    Class => 'CPANPLUS', Style => 'gettext';
+use vars qw[$VERSION];
+$VERSION = "0.9134";
 
 local $Params::Check::VERBOSE = 1;
 
@@ -13,7 +15,7 @@ local $Params::Check::VERBOSE = 1;
 
 =head1 NAME
 
-CPANPLUS::Module::Author
+CPANPLUS::Module::Author - CPAN author object for CPANPLUS
 
 =head1 SYNOPSIS
 

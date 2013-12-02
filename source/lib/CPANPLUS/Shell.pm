@@ -12,15 +12,16 @@ use Locale::Maketext::Simple    Class => 'CPANPLUS', Style => 'gettext';
 
 $Params::Check::VERBOSE = 1;
 
-use vars qw[@ISA $SHELL $DEFAULT];
+use vars qw[@ISA $SHELL $DEFAULT $VERSION];
 
+$VERSION = "0.9134";
 $DEFAULT    = SHELL_DEFAULT;
 
 =pod
 
 =head1 NAME
 
-CPANPLUS::Shell
+CPANPLUS::Shell - base class for CPANPLUS shells
 
 =head1 SYNOPSIS
 

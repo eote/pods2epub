@@ -1,8 +1,8 @@
 package CPANPLUS::Backend::RV;
 
 use strict;
-use vars qw[$STRUCT];
-
+use vars qw[$STRUCT $VERSION];
+$VERSION = "0.9134";
 
 use CPANPLUS::Error;
 use CPANPLUS::Internals::Constants;
@@ -19,7 +19,7 @@ local $Params::Check::VERBOSE = 1;
 
 =head1 NAME
 
-CPANPLUS::Backend::RV
+CPANPLUS::Backend::RV - return value objects
 
 =head1 SYNOPSIS
 

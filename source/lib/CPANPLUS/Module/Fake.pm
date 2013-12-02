@@ -7,9 +7,10 @@ use CPANPLUS::Module::Author::Fake;
 use CPANPLUS::Internals;
 
 use strict;
-use vars            qw[@ISA];
+use vars            qw[@ISA $VERSION];
 use Params::Check   qw[check];
 
+$VERSION = "0.9134";
 @ISA = qw[CPANPLUS::Module];
 $Params::Check::VERBOSE = 1;
 
@@ -17,7 +18,7 @@ $Params::Check::VERBOSE = 1;
 
 =head1 NAME
 
-CPANPLUS::Module::Fake
+CPANPLUS::Module::Fake - fake module object for internal use
 
 =head1 SYNOPSIS
 

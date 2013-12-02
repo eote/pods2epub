@@ -12,6 +12,8 @@ use IPC::Cmd                    qw[run];
 use Params::Check               qw[check];
 use Module::Load::Conditional   qw[can_load];
 use Locale::Maketext::Simple    Class => 'CPANPLUS', Style => 'gettext';
+use vars qw[$VERSION];
+$VERSION = "0.9134";
 
 $Params::Check::VERBOSE = 1;
 
@@ -19,7 +21,7 @@ $Params::Check::VERBOSE = 1;
 
 =head1 NAME
 
-CPANPLUS::Internals::Fetch
+CPANPLUS::Internals::Fetch - internals for fetching files
 
 =head1 SYNOPSIS
 

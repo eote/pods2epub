@@ -1,15 +1,15 @@
 package bigrat;
 use 5.006;
 
-$VERSION = '0.25';
+$VERSION = '0.32';
 require Exporter;
 @ISA		= qw( bigint );
-@EXPORT_OK 	= qw( PI e bpi bexp );
+@EXPORT_OK 	= qw( PI e bpi bexp hex oct );
 @EXPORT		= qw( inf NaN );
 
 use strict;
 use overload;
-require bigint;		# no "use" to avoid callind import
+use bigint ();
 
 ############################################################################## 
 
@@ -17,6 +17,8 @@ BEGIN
   {
   *inf = \&bigint::inf;
   *NaN = \&bigint::NaN;
+  *hex = \&bigint::hex;
+  *oct = \&bigint::oct;
   }
 
 # These are all alike, and thus faked by AUTOLOAD
@@ -69,23 +71,6 @@ sub in_effect
   }
 
 #############################################################################
-# the following two routines are for Perl 5.9.4 or later and are lexical
-
-sub _hex
-  {
-  return CORE::hex($_[0]) unless in_effect(1);
-  my $i = $_[0];
-  $i = '0x'.$i unless $i =~ /^0x/;
-  Math::BigInt->new($i);
-  }
-
-sub _oct
-  {
-  return CORE::oct($_[0]) unless in_effect(1);
-  my $i = $_[0];
-  return Math::BigInt->from_oct($i) if $i =~ /^0[0-7]/;
-  Math::BigInt->new($i);
-  }
 
 sub import 
   {
@@ -95,12 +80,10 @@ sub import
 
   $^H{bigrat} = 1;					# we are in effect
 
-  my ($hex,$oct);
   # for newer Perls always override hex() and oct() with a lexical version:
   if ($] > 5.009004)
     {
-    $oct = \&_oct;
-    $hex = \&_hex;
+    bigint::_override();
     }
   # some defaults
   my $lib = ''; my $lib_kind = 'try'; my $upgrade = 'Math::BigFloat';
@@ -115,7 +98,7 @@ sub import
       {
       # this causes upgrading
       $upgrade = $_[$i+1];		# or undef to disable
-      my $s = 2; $s = 1 if @a-$j < 2;	# avoid "can not modify non-existant..."
+      my $s = 2; $s = 1 if @a-$j < 2;	# avoid "can not modify non-existent..."
       splice @a, $j, $s; $j -= $s;
       }
     elsif ($_[$i] =~ /^(l|lib|try|only)$/)
@@ -123,19 +106,19 @@ sub import
       # this causes a different low lib to take care...
       $lib_kind = $1; $lib_kind = 'lib' if $lib_kind eq 'l';
       $lib = $_[$i+1] || '';
-      my $s = 2; $s = 1 if @a-$j < 2;	# avoid "can not modify non-existant..."
+      my $s = 2; $s = 1 if @a-$j < 2;	# avoid "can not modify non-existent..."
       splice @a, $j, $s; $j -= $s; $i++;
       }
     elsif ($_[$i] =~ /^(a|accuracy)$/)
       {
       $a = $_[$i+1];
-      my $s = 2; $s = 1 if @a-$j < 2;   # avoid "can not modify non-existant..."
+      my $s = 2; $s = 1 if @a-$j < 2;   # avoid "can not modify non-existent..."
       splice @a, $j, $s; $j -= $s; $i++;
       }
     elsif ($_[$i] =~ /^(p|precision)$/)
       {
       $p = $_[$i+1];
-      my $s = 2; $s = 1 if @a-$j < 2;   # avoid "can not modify non-existant..."
+      my $s = 2; $s = 1 if @a-$j < 2;   # avoid "can not modify non-existent..."
       splice @a, $j, $s; $j -= $s; $i++;
       }
     elsif ($_[$i] =~ /^(v|version)$/)
@@ -148,17 +131,7 @@ sub import
       $trace = 1;
       splice @a, $j, 1; $j --;
       }
-    elsif ($_[$i] eq 'hex')
-      {
-      splice @a, $j, 1; $j --;
-      $hex = \&bigint::_hex_global;
-      }
-    elsif ($_[$i] eq 'oct')
-      {
-      splice @a, $j, 1; $j --;
-      $oct = \&bigint::_oct_global;
-      }
-    elsif ($_[$i] !~ /^(PI|e|bpi|bexp)\z/)
+    elsif ($_[$i] !~ /^(PI|e|bpi|bexp|hex|oct)\z/)
       {
       die ("unknown option $_[$i]");
       }
@@ -219,11 +192,6 @@ sub import
     {
     $self->export_to_level(1,$self,@a);           # export inf and NaN
     }
-  {
-    no warnings 'redefine';
-    *CORE::GLOBAL::oct = $oct if $oct;
-    *CORE::GLOBAL::hex = $hex if $hex;
-  }
   }
 
 sub PI () { Math::BigFloat->new('3.141592653589793238462643383279502884197'); }
@@ -257,7 +225,7 @@ bigrat - Transparent BigNumber/BigRational support for Perl
     print 1/3,"\n";			# 0.33333...
   }
 
-  # Note that this will make hex() and oct() be globally overriden:
+  # Import into current package:
   use bigrat qw/hex oct/;
   print hex("0x1234567890123490"),"\n";
   print oct("01234567890123490"),"\n";
@@ -302,7 +270,7 @@ Math::BigInt::Bar, and when this also fails, revert to Math::BigInt::Calc:
 
 Using C<lib> warns if none of the specified libraries can be found and
 L<Math::BigInt> did fall back to one of the default libraries.
-To supress this warning, use C<try> instead:
+To suppress this warning, use C<try> instead:
 
         use bignum try => 'GMP';
 
@@ -325,7 +293,7 @@ minus infinity. You will get '+inf' when dividing a positive number by 0, and
 
 Since all numbers are not objects, you can use all functions that are part of
 the BigInt or BigFloat API. It is wise to use only the bxxx() notation, and not
-the fxxx() notation, though. This makes you independed on the fact that the
+the fxxx() notation, though. This makes you independent on the fact that the
 underlying object might morph into a different class than BigFloat.
 
 =over 2
@@ -399,7 +367,7 @@ This method only works on Perl v5.9.4 or later.
 
 Math with the numbers is done (by default) by a module called
 
-=head2 Cavaet
+=head2 Caveat
 
 But a warning is in order. When using the following to make a copy of a number,
 only a shallow copy will be made.
@@ -452,7 +420,7 @@ than or equal to zero. See Math::BigInt's bround() function for details.
 
 	perl -Mbigrat=a,50 -le 'print sqrt(20)'
 
-Note that setting precision and accurary at the same time is not possible.
+Note that setting precision and accuracy at the same time is not possible.
 
 =item p or precision
 
@@ -463,7 +431,7 @@ integer. See Math::BigInt's bfround() function for details.
 
 	perl -Mbigrat=p,-50 -le 'print sqrt(20)'
 
-Note that setting precision and accurary at the same time is not possible.
+Note that setting precision and accuracy at the same time is not possible.
 
 =item t or trace
 
@@ -486,14 +454,16 @@ This will be hopefully fixed soon ;)
 =item hex
 
 Override the built-in hex() method with a version that can handle big
-integers. Note that under Perl v5.9.4 or ealier, this will be global
-and cannot be disabled with "no bigint;".
+numbers. This overrides it by exporting it to the current package. Under
+Perl v5.10.0 and higher, this is not so necessary, as hex() is lexically
+overridden in the current scope whenever the bigrat pragma is active.
 
 =item oct
 
 Override the built-in oct() method with a version that can handle big
-integers. Note that under Perl v5.9.4 or ealier, this will be global
-and cannot be disabled with "no bigint;".
+numbers. This overrides it by exporting it to the current package. Under
+Perl v5.10.0 and higher, this is not so necessary, as oct() is lexically
+overridden in the current scope whenever the bigrat pragma is active.
 
 =item v or version
 
@@ -503,7 +473,7 @@ This prints out the name and version of all modules used and then exits.
 
 =back
 
-=head1 CAVAETS
+=head1 CAVEATS
 
 =over 2
 
@@ -539,11 +509,11 @@ Compare this to:
 =back
 
 =head1 EXAMPLES
- 
+
 	perl -Mbigrat -le 'print sqrt(33)'
 	perl -Mbigrat -le 'print 2*255'
 	perl -Mbigrat -le 'print 4.5+2*255'
-	perl -Mbigrat -le 'print 3/7 + 5/7 + 8/3'	
+	perl -Mbigrat -le 'print 3/7 + 5/7 + 8/3'
 	perl -Mbigrat -le 'print 12->is_odd()';
 	perl -Mbignum=l,GMP -le 'print 7 ** 7777'
 

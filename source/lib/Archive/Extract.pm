@@ -1,4 +1,5 @@
 package Archive::Extract;
+use if $] > 5.017, 'deprecate';
 
 use strict;
 
@@ -16,7 +17,9 @@ use Locale::Maketext::Simple    Style => 'gettext';
 ### solaris has silly /bin/tar output ###
 use constant ON_SOLARIS     => $^O eq 'solaris' ? 1 : 0;
 use constant ON_NETBSD      => $^O eq 'netbsd' ? 1 : 0;
-use constant ON_FREEBSD     => $^O eq 'freebsd' ? 1 : 0;
+use constant ON_OPENBSD     => $^O eq 'openbsd' ? 1 : 0;
+use constant ON_FREEBSD     => $^O =~ m!^(free|midnight)bsd$! ? 1 : 0;
+use constant ON_LINUX       => $^O eq 'linux' ? 1 : 0;
 use constant FILE_EXISTS    => sub { -e $_[0] ? 1 : 0 };
 
 ### VMS may require quoting upper case command options
@@ -45,7 +48,7 @@ use vars qw[$VERSION $PREFER_BIN $PROGRAMS $WARN $DEBUG
             $_ALLOW_BIN $_ALLOW_PURE_PERL $_ALLOW_TAR_ITER
          ];
 
-$VERSION            = '0.52';
+$VERSION            = '0.68';
 $PREFER_BIN         = 0;
 $WARN               = 1;
 $DEBUG              = 0;
@@ -126,12 +129,22 @@ See the C<HOW IT WORKS> section further down for details.
 
 ### see what /bin/programs are available ###
 $PROGRAMS = {};
-for my $pgm (qw[tar unzip gzip bunzip2 uncompress unlzma unxz]) {
+CMD: for my $pgm (qw[tar unzip gzip bunzip2 uncompress unlzma unxz]) {
     if ( $pgm eq 'unzip' and ( ON_NETBSD or ON_FREEBSD ) ) {
       local $IPC::Cmd::INSTANCES = 1;
-      my @possibles = can_run($pgm);
       ($PROGRAMS->{$pgm}) = grep { ON_NETBSD ? m!/usr/pkg/! : m!/usr/local! } can_run($pgm);
-      next;
+      next CMD;
+    }
+    if ( $pgm eq 'unzip' and ON_LINUX ) {
+      # Check if 'unzip' is busybox masquerading
+      local $IPC::Cmd::INSTANCES = 1;
+      my $opt = ON_VMS ? '"-Z"' : '-Z';
+      ($PROGRAMS->{$pgm}) = grep { scalar run(command=> [ $_, $opt, '-1' ]) } can_run($pgm);
+      next CMD;
+    }
+    if ( $pgm eq 'tar' and ON_OPENBSD || ON_SOLARIS ) {
+      # try gtar first
+      next CMD if $PROGRAMS->{$pgm} = can_run('gtar');
     }
     $PROGRAMS->{$pgm} = can_run($pgm);
 }
@@ -258,16 +271,16 @@ Returns a C<Archive::Extract> object on success, or false on failure.
         ### figure out the type, if it wasn't already specified ###
         unless ( $parsed->{type} ) {
             $parsed->{type} =
-                $ar =~ /.+?\.(?:tar\.gz|tgz)$/i     ? TGZ   :
-                $ar =~ /.+?\.gz$/i                  ? GZ    :
-                $ar =~ /.+?\.tar$/i                 ? TAR   :
-                $ar =~ /.+?\.(zip|jar|par)$/i       ? ZIP   :
-                $ar =~ /.+?\.(?:tbz2?|tar\.bz2?)$/i ? TBZ   :
-                $ar =~ /.+?\.bz2$/i                 ? BZ2   :
-                $ar =~ /.+?\.Z$/                    ? Z     :
-                $ar =~ /.+?\.lzma$/                 ? LZMA  :
-                $ar =~ /.+?\.(?:txz|tar\.xz)$/i     ? TXZ   :
-                $ar =~ /.+?\.xz$/                   ? XZ    :
+                $ar =~ /.+?\.(?:tar\.gz|tgz)$/i         ? TGZ   :
+                $ar =~ /.+?\.gz$/i                      ? GZ    :
+                $ar =~ /.+?\.tar$/i                     ? TAR   :
+                $ar =~ /.+?\.(zip|jar|ear|war|par)$/i   ? ZIP   :
+                $ar =~ /.+?\.(?:tbz2?|tar\.bz2?)$/i     ? TBZ   :
+                $ar =~ /.+?\.bz2$/i                     ? BZ2   :
+                $ar =~ /.+?\.Z$/                        ? Z     :
+                $ar =~ /.+?\.lzma$/                     ? LZMA  :
+                $ar =~ /.+?\.(?:txz|tar\.xz)$/i         ? TXZ   :
+                $ar =~ /.+?\.xz$/                       ? XZ    :
                 '';
 
         }
@@ -647,7 +660,7 @@ sub have_old_bunzip2 {
         ### check for /bin/tar ###
         ### check for /bin/gzip if we need it ###
         ### if any of the binaries are not available, return NA
-        {   my $diag =  not $self->bin_tar ?
+        {   my $diag =  !$self->bin_tar ?
                             loc("No '%1' program found", '/bin/tar') :
                         $self->is_tgz && !$self->bin_gzip ?
                             loc("No '%1' program found", '/bin/gzip') :
@@ -670,17 +683,21 @@ sub have_old_bunzip2 {
         ### see what command we should run, based on whether
         ### it's a .tgz or .tar
 
+        ### GNU tar can't handled VMS filespecs, but VMSTAR can handle Unix filespecs.
+        my $archive = $self->archive;
+        $archive = VMS::Filespec::unixify($archive) if ON_VMS;
+
         ### XXX solaris tar and bsdtar are having different outputs
         ### depending whether you run with -x or -t
         ### compensate for this insanity by running -t first, then -x
         {    my $cmd =
-                $self->is_tgz ? [$self->bin_gzip, '-cdf', $self->archive, '|',
+                $self->is_tgz ? [$self->bin_gzip, '-cdf', $archive, '|',
                                  $self->bin_tar, '-tf', '-'] :
-                $self->is_tbz ? [$self->bin_bunzip2, '-cd', $self->archive, '|',
+                $self->is_tbz ? [$self->bin_bunzip2, '-cd', $archive, '|',
                                  $self->bin_tar, '-tf', '-'] :
-                $self->is_txz ? [$self->bin_unxz, '-cd', $self->archive, '|',
+                $self->is_txz ? [$self->bin_unxz, '-cd', $archive, '|',
                                  $self->bin_tar, '-tf', '-'] :
-                [$self->bin_tar, @ExtraTarFlags, '-tf', $self->archive];
+                [$self->bin_tar, @ExtraTarFlags, '-tf', $archive];
 
             ### run the command
             ### newer versions of 'tar' (1.21 and up) now print record size
@@ -697,12 +714,12 @@ sub have_old_bunzip2 {
             unless( $out[0] ) {
                 return $self->_error(loc(
                                 "Error listing contents of archive '%1': %2",
-                                $self->archive, $buffer ));
+                                $archive, $buffer ));
             }
 
             ### no buffers available?
             if( !IPC::Cmd->can_capture_buffer and !$buffer ) {
-                $self->_error( $self->_no_buffer_files( $self->archive ) );
+                $self->_error( $self->_no_buffer_files( $archive ) );
 
             } else {
                 ### if we're on solaris we /might/ be using /bin/tar, which has
@@ -729,13 +746,13 @@ sub have_old_bunzip2 {
 
         ### now actually extract it ###
         {   my $cmd =
-                $self->is_tgz ? [$self->bin_gzip, '-cdf', $self->archive, '|',
+                $self->is_tgz ? [$self->bin_gzip, '-cdf', $archive, '|',
                                  $self->bin_tar, '-xf', '-'] :
-                $self->is_tbz ? [$self->bin_bunzip2, '-cd', $self->archive, '|',
+                $self->is_tbz ? [$self->bin_bunzip2, '-cd', $archive, '|',
                                  $self->bin_tar, '-xf', '-'] :
-                $self->is_txz ? [$self->bin_unxz, '-cd', $self->archive, '|',
+                $self->is_txz ? [$self->bin_unxz, '-cd', $archive, '|',
                                  $self->bin_tar, '-xf', '-'] :
-                [$self->bin_tar, @ExtraTarFlags, '-xf', $self->archive];
+                [$self->bin_tar, @ExtraTarFlags, '-xf', $archive];
 
             my $buffer = '';
             unless( scalar run( command => $cmd,
@@ -743,7 +760,7 @@ sub have_old_bunzip2 {
                                 verbose => $DEBUG )
             ) {
                 return $self->_error(loc("Error extracting archive '%1': %2",
-                                $self->archive, $buffer ));
+                                $archive, $buffer ));
             }
 
             ### we might not have them, due to lack of buffers
@@ -1087,6 +1104,10 @@ sub _unzip_bin {
             $self->_error( $self->_no_buffer_files( $self->archive ) );
 
         } else {
+            ### Annoyingly, pesky MSWin32 can either have 'native' tools
+            ### which have \r\n line endings or Cygwin-based tools which
+            ### have \n line endings. Jan Dubois suggested using this fix
+            local $/ = ON_WIN32 ? qr/\r?\n/ : "\n";
             $self->files( [split $/, $buffer] );
         }
     }
@@ -1647,7 +1668,7 @@ thread safe. See C<rt.cpan.org> bug C<#45671> for details.
 
 =head1 BUG REPORTS
 
-Please report bugs or other issues to E<lt>bug-archive-extract@rt.cpan.org<gt>.
+Please report bugs or other issues to E<lt>bug-archive-extract@rt.cpan.orgE<gt>.
 
 =head1 AUTHOR
 

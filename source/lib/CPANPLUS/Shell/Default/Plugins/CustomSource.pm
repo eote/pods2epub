@@ -7,9 +7,12 @@ use CPANPLUS::Internals::Constants;
 use Data::Dumper;
 use Locale::Maketext::Simple        Class => 'CPANPLUS', Style => 'gettext';
 
+use vars qw[$VERSION];
+$VERSION = "0.9134";
+
 =head1 NAME
 
-CPANPLUS::Shell::Default::Plugins::CustomSource
+CPANPLUS::Shell::Default::Plugins::CustomSource - add custom sources to CPANPLUS
 
 =head1 SYNOPSIS
 

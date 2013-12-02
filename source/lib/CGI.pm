@@ -18,13 +18,13 @@ use Carp 'croak';
 # The most recent version and complete docs are available at:
 #   http://stein.cshl.org/WWW/software/CGI/
 
-$CGI::revision = '$Id: CGI.pm,v 1.194 2005/12/06 22:12:56 lstein Exp $';
-$CGI::VERSION='3.15';
+$CGI::revision = '$Id: CGI.pm,v 1.266 2009/07/30 16:32:34 lstein Exp $';
+$CGI::VERSION='3.49';
 
 # HARD-CODED LOCATION FOR FILE UPLOAD TEMPORARY FILES.
 # UNCOMMENT THIS ONLY IF YOU KNOW WHAT YOU'RE DOING.
 # $CGITempFile::TMPDIRECTORY = '/usr/tmp';
-use CGI::Util qw(rearrange make_attributes unescape escape expires ebcdic2ascii ascii2ebcdic);
+use CGI::Util qw(rearrange rearrange_header make_attributes unescape escape expires ebcdic2ascii ascii2ebcdic);
 
 #use constant XHTML_DTD => ['-//W3C//DTD XHTML Basic 1.0//EN',
 #                           'http://www.w3.org/TR/xhtml-basic/xhtml-basic10.dtd'];
@@ -37,8 +37,14 @@ use constant XHTML_DTD => ['-//W3C//DTD XHTML 1.0 Transitional//EN',
   $TAINTED = substr("$0$^X",0,0);
 }
 
-$MOD_PERL = 0; # no mod_perl by default
+$MOD_PERL            = 0; # no mod_perl by default
+
+#global settings
+$POST_MAX            = -1; # no limit to uploaded files
+$DISABLE_UPLOADS     = 0;
+
 @SAVED_SYMBOLS = ();
+
 
 # >>>>> Here are some globals that you might want to adjust <<<<<<
 sub initialize_globals {
@@ -55,8 +61,8 @@ sub initialize_globals {
 
     # Set this to 1 to enable NOSTICKY scripts
     # or: 
-    #    1) use CGI qw(-nosticky)
-    #    2) $CGI::nosticky(1)
+    #    1) use CGI '-nosticky';
+    #    2) $CGI::NOSTICKY = 1;
     $NOSTICKY = 0;
 
     # Set this to 1 to enable NPH scripts
@@ -90,13 +96,6 @@ sub initialize_globals {
     # it can just be renamed, instead of read and written.
     $CLOSE_UPLOAD_FILES = 0;
 
-    # Set this to a positive value to limit the size of a POSTing
-    # to a certain number of bytes:
-    $POST_MAX = -1;
-
-    # Change this to 1 to disable uploads entirely:
-    $DISABLE_UPLOADS = 0;
-
     # Automatically determined -- don't change
     $EBCDIC = 0;
 
@@ -110,6 +109,9 @@ sub initialize_globals {
     # use CGI qw(-no_undef_params);
     $NO_UNDEF_PARAMS = 0;
 
+    # return everything as utf-8
+    $PARAM_UTF8      = 0;
+
     # Other globals that you shouldn't worry about.
     undef $Q;
     $BEEN_THERE = 0;
@@ -118,6 +120,7 @@ sub initialize_globals {
     undef %EXPORT;
     undef $QUERY_CHARSET;
     undef %QUERY_FIELDNAMES;
+    undef %QUERY_TMPFILES;
 
     # prevent complaints by mod_perl
     1;
@@ -125,7 +128,9 @@ sub initialize_globals {
 
 # ------------------ START OF THE LIBRARY ------------
 
-*end_form = \&endform;
+#### Method: endform
+# This method is DEPRECATED
+*endform = \&end_form;
 
 # make mod_perlhappy
 initialize_globals();
@@ -153,12 +158,14 @@ if ($OS =~ /^MSWin/i) {
     $OS = 'EPOC';
 } elsif ($OS =~ /^cygwin/i) {
     $OS = 'CYGWIN';
+} elsif ($OS =~ /^NetWare/i) {
+    $OS = 'NETWARE';
 } else {
     $OS = 'UNIX';
 }
 
 # Some OS logic.  Binary mode enabled on DOS, NT and VMS
-$needs_binmode = $OS=~/^(WINDOWS|DOS|OS2|MSWin|CYGWIN)/;
+$needs_binmode = $OS=~/^(WINDOWS|DOS|OS2|MSWin|CYGWIN|NETWARE)/;
 
 # This is the default class for the CGI object to use when all else fails.
 $DefaultClass = 'CGI' unless defined $CGI::DefaultClass;
@@ -169,7 +176,7 @@ $AutoloadClass = $DefaultClass unless defined $CGI::AutoloadClass;
 # The path separator is a slash, backslash or semicolon, depending
 # on the paltform.
 $SL = {
-     UNIX    => '/',  OS2 => '\\', EPOC      => '/', CYGWIN => '/',
+     UNIX    => '/',  OS2 => '\\', EPOC      => '/', CYGWIN => '/', NETWARE => '/',
      WINDOWS => '\\', DOS => '\\', MACINTOSH => ':', VMS    => '/'
     }->{$OS};
 
@@ -178,8 +185,12 @@ $SL = {
 # $NPH++ if defined($ENV{'SERVER_SOFTWARE'}) && $ENV{'SERVER_SOFTWARE'}=~/IIS/;
 $IIS++ if defined($ENV{'SERVER_SOFTWARE'}) && $ENV{'SERVER_SOFTWARE'}=~/IIS/;
 
+# Turn on special checking for ActiveState's PerlEx
+$PERLEX++ if defined($ENV{'GATEWAY_INTERFACE'}) && $ENV{'GATEWAY_INTERFACE'} =~ /^CGI-PerlEx/;
+
 # Turn on special checking for Doug MacEachern's modperl
-if (exists $ENV{MOD_PERL}) {
+# PerlEx::DBI tries to fool DBI by setting MOD_PERL
+if (exists $ENV{MOD_PERL} && ! $PERLEX) {
   # mod_perl handlers may run system() on scripts using CGI.pm;
   # Make sure so we don't get fooled by inherited $ENV{MOD_PERL}
   if (exists $ENV{MOD_PERL_API_VERSION} && $ENV{MOD_PERL_API_VERSION} == 2) {
@@ -194,9 +205,6 @@ if (exists $ENV{MOD_PERL}) {
     require Apache;
   }
 }
-
-# Turn on special checking for ActiveState's PerlEx
-$PERLEX++ if defined($ENV{'GATEWAY_INTERFACE'}) && $ENV{'GATEWAY_INTERFACE'} =~ /^CGI-PerlEx/;
 
 # Define the CRLF sequence.  I can't use a simple "\r\n" because the meaning
 # of "\n" is different on different OS's (sometimes it generates CRLF, sometimes LF
@@ -224,7 +232,7 @@ if ($needs_binmode) {
 			   tt u i b blockquote pre img a address cite samp dfn html head
 			   base body Link nextid title meta kbd start_html end_html
 			   input Select option comment charset escapeHTML/],
-		':html3'=>[qw/div table caption th td TR Tr sup Sub strike applet Param 
+		':html3'=>[qw/div table caption th td TR Tr sup Sub strike applet Param nobr
 			   embed basefont style span layer ilayer font frameset frame script small big Area Map/],
                 ':html4'=>[qw/abbr acronym bdo col colgroup del fieldset iframe
                             ins label legend noframes noscript object optgroup Q 
@@ -291,10 +299,10 @@ sub import {
     # To allow overriding, search through the packages
     # Till we find one in which the correct subroutine is defined.
     my @packages = ($self,@{"$self\:\:ISA"});
-    foreach $sym (keys %EXPORT) {
+    for $sym (keys %EXPORT) {
 	my $pck;
 	my $def = ${"$self\:\:AutoloadClass"} || $DefaultClass;
-	foreach $pck (@packages) {
+	for $pck (@packages) {
 	    if (defined(&{"$pck\:\:$sym"})) {
 		$def = $pck;
 		last;
@@ -314,7 +322,7 @@ sub expand_tags {
     return ("start_$1","end_$1") if $tag=~/^(?:\*|start_|end_)(.+)/;
     my(@r);
     return ($tag) unless $EXPORT_TAGS{$tag};
-    foreach (@{$EXPORT_TAGS{$tag}}) {
+    for (@{$EXPORT_TAGS{$tag}}) {
 	push(@r,&expand_tags($_));
     }
     return @r;
@@ -329,6 +337,10 @@ sub new {
   my $self = {};
 
   bless $self,ref $class || $class || $DefaultClass;
+
+  # always use a tempfile
+  $self->{'use_tempfile'} = 1;
+
   if (ref($initializer[0])
       && (UNIVERSAL::isa($initializer[0],'Apache')
 	  ||
@@ -339,12 +351,14 @@ sub new {
  if (ref($initializer[0]) 
      && (UNIVERSAL::isa($initializer[0],'CODE'))) {
     $self->upload_hook(shift @initializer, shift @initializer);
+    $self->{'use_tempfile'} = shift @initializer if (@initializer > 0);
   }
   if ($MOD_PERL) {
     if ($MOD_PERL == 1) {
       $self->r(Apache->request) unless $self->r;
       my $r = $self->r;
       $r->register_cleanup(\&CGI::_reset_globals);
+      $self->_setup_symbols(@SAVED_SYMBOLS) if @SAVED_SYMBOLS;
     }
     else {
       # XXX: once we have the new API
@@ -353,6 +367,7 @@ sub new {
       my $r = $self->r;
       $r->subprocess_env unless exists $ENV{REQUEST_METHOD};
       $r->pool->cleanup_register(\&CGI::_reset_globals);
+      $self->_setup_symbols(@SAVED_SYMBOLS) if @SAVED_SYMBOLS;
     }
     undef $NPH;
   }
@@ -371,7 +386,7 @@ sub new {
 sub DESTROY {
   my $self = shift;
   if ($OS eq 'WINDOWS') {
-    foreach my $href (values %{$self->{'.tmpfiles'}}) {
+    for my $href (values %{$self->{'.tmpfiles'}}) {
       $href->{hndl}->DESTROY if defined $href->{hndl};
       $href->{name}->DESTROY if defined $href->{name};
     }
@@ -392,9 +407,10 @@ sub upload_hook {
   } else {
     $self = shift;
   }
-  my ($hook,$data) = @_;
+  my ($hook,$data,$use_tempfile) = @_;
   $self->{'.upload_hook'} = $hook;
   $self->{'.upload_data'} = $data;
+  $self->{'use_tempfile'} = $use_tempfile if defined $use_tempfile;
 }
 
 #### Method: param
@@ -422,21 +438,40 @@ sub param {
 	if (substr($p[0],0,1) eq '-') {
 	    @values = defined($value) ? (ref($value) && ref($value) eq 'ARRAY' ? @{$value} : $value) : ();
 	} else {
-	    foreach ($value,@other) {
+	    for ($value,@other) {
 		push(@values,$_) if defined($_);
 	    }
 	}
 	# If values is provided, then we set it.
-	if (@values) {
+	if (@values or defined $value) {
 	    $self->add_parameter($name);
-	    $self->{$name}=[@values];
+	    $self->{param}{$name}=[@values];
 	}
     } else {
 	$name = $p[0];
     }
 
-    return unless defined($name) && $self->{$name};
-    return wantarray ? @{$self->{$name}} : $self->{$name}->[0];
+    return unless defined($name) && $self->{param}{$name};
+
+    my @result = @{$self->{param}{$name}};
+
+    if ($PARAM_UTF8) {
+      eval "require Encode; 1;" unless Encode->can('decode'); # bring in these functions
+      @result = map {ref $_ ? $_ : $self->_decode_utf8($_) } @result;
+    }
+
+    return wantarray ?  @result : $result[0];
+}
+
+sub _decode_utf8 {
+    my ($self, $val) = @_;
+
+    if (Encode::is_utf8($val)) {
+        return $val;
+    }
+    else {
+        return Encode::decode(utf8 => $val);
+    }
 }
 
 sub self_or_default {
@@ -469,7 +504,7 @@ sub self_or_CGI {
 
 # Initialize the query object from the environment.
 # If a parameter list is found, this object will be set
-# to an associative array in which parameter names are keys
+# to a hash in which parameter names are keys
 # and the values are stored as lists
 # If a keyword list is found, this method creates a bogus
 # parameter list with the single parameter 'keywords'.
@@ -477,6 +512,8 @@ sub self_or_CGI {
 sub init {
   my $self = shift;
   my($query_string,$meth,$content_length,$fh,@lines) = ('','','','');
+
+  my $is_xforms;
 
   my $initializer = shift;  # for backward compatibility
   local($/) = "\n";
@@ -488,12 +525,20 @@ sub init {
     # ourselves from the original query (which may be gone
     # if it was read from STDIN originally.)
     if (defined(@QUERY_PARAM) && !defined($initializer)) {
-	foreach (@QUERY_PARAM) {
-	    $self->param('-name'=>$_,'-value'=>$QUERY_PARAM{$_});
-	}
-	$self->charset($QUERY_CHARSET);
-	$self->{'.fieldnames'} = {%QUERY_FIELDNAMES};
-	return;
+        for my $name (@QUERY_PARAM) {
+            my $val = $QUERY_PARAM{$name}; # always an arrayref;
+            $self->param('-name'=>$name,'-value'=> $val);
+            if (defined $val and ref $val eq 'ARRAY') {
+                for my $fh (grep {defined(fileno($_))} @$val) {
+                   seek($fh,0,0); # reset the filehandle.  
+                }
+
+            }
+        }
+        $self->charset($QUERY_CHARSET);
+        $self->{'.fieldnames'} = {%QUERY_FIELDNAMES};
+        $self->{'.tmpfiles'}   = {%QUERY_TMPFILES};
+        return;
     }
 
     $meth=$ENV{'REQUEST_METHOD'} if defined($ENV{'REQUEST_METHOD'});
@@ -508,17 +553,10 @@ sub init {
 
       # avoid unreasonably large postings
       if (($POST_MAX > 0) && ($content_length > $POST_MAX)) {
-	# quietly read and discard the post
-	  my $buffer;
-          my $tmplength = $content_length;
-          while($tmplength > 0) {
-                 my $maxbuffer = ($tmplength < 10000)?$tmplength:10000;
-                 my $bytesread = $MOD_PERL ? $self->r->read($buffer,$maxbuffer) : read(STDIN,$buffer,$maxbuffer);
-                 $tmplength -= $bytesread;
-          }
-          $self->cgi_error("413 Request entity too large");
-          last METHOD;
-       }
+	#discard the post, unread
+	$self->cgi_error("413 Request entity too large");
+	last METHOD;
+      }
 
       # Process multipart postings, but only if the initializer is
       # not defined.
@@ -532,40 +570,66 @@ sub init {
 	  last METHOD;
       } 
 
+      # Process XForms postings. We know that we have XForms in the
+      # following cases:
+      # method eq 'POST' && content-type eq 'application/xml'
+      # method eq 'POST' && content-type =~ /multipart\/related.+start=/
+      # There are more cases, actually, but for now, we don't support other
+      # methods for XForm posts.
+      # In a XForm POST, the QUERY_STRING is parsed normally.
+      # If the content-type is 'application/xml', we just set the param
+      # XForms:Model (referring to the xml syntax) param containing the
+      # unparsed XML data.
+      # In the case of multipart/related we set XForms:Model as above, but
+      # the other parts are available as uploads with the Content-ID as the
+      # the key.
+      # See the URL below for XForms specs on this issue.
+      # http://www.w3.org/TR/2006/REC-xforms-20060314/slice11.html#submit-options
+      if ($meth eq 'POST' && defined($ENV{'CONTENT_TYPE'})) {
+              if ($ENV{'CONTENT_TYPE'} eq 'application/xml') {
+                      my($param) = 'XForms:Model';
+                      my($value) = '';
+                      $self->add_parameter($param);
+                      $self->read_from_client(\$value,$content_length,0)
+                        if $content_length > 0;
+                      push (@{$self->{param}{$param}},$value);
+                      $is_xforms = 1;
+              } elsif ($ENV{'CONTENT_TYPE'} =~ /multipart\/related.+boundary=\"?([^\";,]+)\"?.+start=\"?\<?([^\"\>]+)\>?\"?/) {
+                      my($boundary,$start) = ($1,$2);
+                      my($param) = 'XForms:Model';
+                      $self->add_parameter($param);
+                      my($value) = $self->read_multipart_related($start,$boundary,$content_length,0);
+                      push (@{$self->{param}{$param}},$value);
+                      if ($MOD_PERL) {
+                              $query_string = $self->r->args;
+                      } else {
+                              $query_string = $ENV{'QUERY_STRING'} if defined $ENV{'QUERY_STRING'};
+                              $query_string ||= $ENV{'REDIRECT_QUERY_STRING'} if defined $ENV{'REDIRECT_QUERY_STRING'};
+                      }
+                      $is_xforms = 1;
+              }
+      }
+
+
       # If initializer is defined, then read parameters
       # from it.
-      if (defined($initializer)) {
+      if (!$is_xforms && defined($initializer)) {
 	  if (UNIVERSAL::isa($initializer,'CGI')) {
 	      $query_string = $initializer->query_string;
 	      last METHOD;
 	  }
 	  if (ref($initializer) && ref($initializer) eq 'HASH') {
-	      foreach (keys %$initializer) {
+	      for (keys %$initializer) {
 		  $self->param('-name'=>$_,'-value'=>$initializer->{$_});
-	      }
-	      last METHOD;
-	  }
-	  
-	  if (defined($fh) && ($fh ne '')) {
-	      while (<$fh>) {
-		  chomp;
-		  last if /^=/;
-		  push(@lines,$_);
-	      }
-	      # massage back into standard format
-	      if ("@lines" =~ /=/) {
-		  $query_string=join("&",@lines);
-	      } else {
-		  $query_string=join("+",@lines);
 	      }
 	      last METHOD;
 	  }
 
           if (defined($fh) && ($fh ne '')) {
-              while (<$fh>) {
-                  chomp;
-                  last if /^=/;
-                  push(@lines,$_);
+              while (my $line = <$fh>) {
+                  chomp $line;
+                  last if $line =~ /^=$/;
+                  push(@lines,$line);
               }
               # massage back into standard format
               if ("@lines" =~ /=/) {
@@ -585,7 +649,7 @@ sub init {
 
       # If method is GET or HEAD, fetch the query from
       # the environment.
-      if ($meth=~/^(GET|HEAD)$/) {
+      if ($is_xforms || $meth=~/^(GET|HEAD)$/) {
 	  if ($MOD_PERL) {
 	    $query_string = $self->r->args;
 	  } else {
@@ -595,9 +659,18 @@ sub init {
 	  last METHOD;
       }
 
-      if ($meth eq 'POST') {
-	  $self->read_from_client(\$query_string,$content_length,0)
-	      if $content_length > 0;
+      if ($meth eq 'POST' || $meth eq 'PUT') {
+	  if ( $content_length > 0 ) {
+	    $self->read_from_client(\$query_string,$content_length,0);
+	  }
+	  elsif (not defined $ENV{CONTENT_LENGTH}) {
+	    $self->read_from_stdin(\$query_string);
+	    # should this be PUTDATA in case of PUT ?
+	    my($param) = $meth . 'DATA' ;
+	    $self->add_parameter($param) ;
+	    push (@{$self->{param}{$param}},$query_string);
+	    undef $query_string ;
+	  }
 	  # Some people want to have their cake and eat it too!
 	  # Uncomment this line to have the contents of the query string
 	  # APPENDED to the POST data.
@@ -605,7 +678,8 @@ sub init {
 	  last METHOD;
       }
 
-      # If $meth is not of GET, POST or HEAD, assume we're being debugged offline.
+      # If $meth is not of GET, POST, PUT or HEAD, assume we're
+      #   being debugged offline.
       # Check the command line and then the standard input for data.
       # We use the shellwords package in order to behave the way that
       # UN*X programmers expect.
@@ -621,14 +695,14 @@ sub init {
   }
 
 # YL: Begin Change for XML handler 10/19/2001
-    if ($meth eq 'POST'
+    if (!$is_xforms && ($meth eq 'POST' || $meth eq 'PUT')
         && defined($ENV{'CONTENT_TYPE'})
         && $ENV{'CONTENT_TYPE'} !~ m|^application/x-www-form-urlencoded|
 	&& $ENV{'CONTENT_TYPE'} !~ m|^multipart/form-data| ) {
-        my($param) = 'POSTDATA' ;
-        $self->add_parameter($param) ;
-      push (@{$self->{$param}},$query_string);
-      undef $query_string ;
+	    my($param) = $meth . 'DATA' ;
+	    $self->add_parameter($param) ;
+	    push (@{$self->{param}{$param}},$query_string);
+	    undef $query_string ;
     }
 # YL: End Change for XML handler 10/19/2001
 
@@ -639,7 +713,7 @@ sub init {
 	    $self->parse_params($query_string);
 	} else {
 	    $self->add_parameter('keywords');
-	    $self->{'keywords'} = [$self->parse_keywordlist($query_string)];
+	    $self->{param}{'keywords'} = [$self->parse_keywordlist($query_string)];
 	}
     }
 
@@ -649,9 +723,9 @@ sub init {
       $self->delete_all();
     }
 
-    # Associative array containing our defined fieldnames
+    # hash containing our defined fieldnames
     $self->{'.fieldnames'} = {};
-    foreach ($self->param('.cgifields')) {
+    for ($self->param('.cgifields')) {
 	$self->{'.fieldnames'}->{$_}++;
     }
     
@@ -704,19 +778,20 @@ sub save_request {
     # again, we initialize ourselves in exactly the same way.  This allows
     # us to have several of these objects.
     @QUERY_PARAM = $self->param; # save list of parameters
-    foreach (@QUERY_PARAM) {
+    for (@QUERY_PARAM) {
       next unless defined $_;
-      $QUERY_PARAM{$_}=$self->{$_};
+      $QUERY_PARAM{$_}=$self->{param}{$_};
     }
     $QUERY_CHARSET = $self->charset;
     %QUERY_FIELDNAMES = %{$self->{'.fieldnames'}};
+    %QUERY_TMPFILES   = %{ $self->{'.tmpfiles'} || {} };
 }
 
 sub parse_params {
     my($self,$tosplit) = @_;
     my(@pairs) = split(/[&;]/,$tosplit);
     my($param,$value);
-    foreach (@pairs) {
+    for (@pairs) {
 	($param,$value) = split('=',$_,2);
 	next unless defined $param;
 	next if $NO_UNDEF_PARAMS and not defined $value;
@@ -724,7 +799,7 @@ sub parse_params {
 	$param = unescape($param);
 	$value = unescape($value);
 	$self->add_parameter($param);
-	push (@{$self->{$param}},$value);
+	push (@{$self->{param}{$param}},$value);
     }
 }
 
@@ -732,7 +807,7 @@ sub add_parameter {
     my($self,$param)=@_;
     return unless defined $param;
     push (@{$self->{'.parameters'}},$param) 
-	unless defined($self->{$param});
+	unless defined($self->{param}{$param});
 }
 
 sub all_parameters {
@@ -850,13 +925,14 @@ sub _setup_symbols {
     # to avoid reexporting unwanted variables
     undef %EXPORT;
 
-    foreach (@_) {
+    for (@_) {
 	$HEADERS_ONCE++,         next if /^[:-]unique_headers$/;
 	$NPH++,                  next if /^[:-]nph$/;
 	$NOSTICKY++,             next if /^[:-]nosticky$/;
 	$DEBUG=0,                next if /^[:-]no_?[Dd]ebug$/;
 	$DEBUG=2,                next if /^[:-][Dd]ebug$/;
 	$USE_PARAM_SEMICOLONS++, next if /^[:-]newstyle_urls$/;
+	$PARAM_UTF8++,           next if /^[:-]utf8$/;
 	$XHTML++,                next if /^[:-]xhtml$/;
 	$XHTML=0,                next if /^[:-]no_?xhtml$/;
 	$USE_PARAM_SEMICOLONS=0, next if /^[:-]oldstyle_urls$/;
@@ -878,7 +954,7 @@ sub _setup_symbols {
 	    next;
 	}
 
-	foreach (&expand_tags($_)) {
+	for (&expand_tags($_)) {
 	    tr/a-zA-Z0-9_//cd;  # don't allow weird function names
 	    $EXPORT{$_}++;
 	}
@@ -947,6 +1023,47 @@ sub read_from_client {
 }
 END_OF_FUNC
 
+'read_from_stdin' => <<'END_OF_FUNC',
+# Read data from stdin until all is read
+sub read_from_stdin {
+    my($self, $buff) = @_;
+    local $^W=0;                # prevent a warning
+
+    #
+    # TODO: loop over STDIN until all is read
+    #
+
+    my($eoffound) = 0;
+    my($localbuf) = '';
+    my($tempbuf) = '';
+    my($bufsiz) = 1024;
+    my($res);
+    while ($eoffound == 0) {
+	if ( $MOD_PERL ) {
+	    $res = $self->r->read($tempbuf, $bufsiz, 0)
+	}
+	else {
+	    $res = read(\*STDIN, $tempbuf, $bufsiz);
+	}
+
+	if ( !defined($res) ) {
+	    # TODO: how to do error reporting ?
+	    $eoffound = 1;
+	    last;
+	}
+	if ( $res == 0 ) {
+	    $eoffound = 1;
+	    last;
+	}
+	$localbuf .= $tempbuf;
+    }
+
+    $$buff = $localbuf;
+
+    return $res;
+}
+END_OF_FUNC
+
 'delete' => <<'END_OF_FUNC',
 #### Method: delete
 # Deletes the named parameter entirely.
@@ -956,9 +1073,9 @@ sub delete {
     my(@names) = rearrange([NAME],@p);
     my @to_delete = ref($names[0]) eq 'ARRAY' ? @$names[0] : @names;
     my %to_delete;
-    foreach my $name (@to_delete)
+    for my $name (@to_delete)
     {
-        CORE::delete $self->{$name};
+        CORE::delete $self->{param}{$name};
         CORE::delete $self->{'.fieldnames'}->{$name};
         $to_delete{$name}++;
     }
@@ -978,7 +1095,7 @@ sub import_names {
     die "Can't import names into \"main\"\n" if \%{"${namespace}::"} == \%::;
     if ($delete || $MOD_PERL || exists $ENV{'FCGI_ROLE'}) {
 	# can anyone find an easier way to do this?
-	foreach (keys %{"${namespace}::"}) {
+	for (keys %{"${namespace}::"}) {
 	    local *symbol = "${namespace}::${_}";
 	    undef $symbol;
 	    undef @symbol;
@@ -986,7 +1103,7 @@ sub import_names {
 	}
     }
     my($param,@value,$var);
-    foreach $param ($self->param) {
+    for $param ($self->param) {
 	# protect against silly names
 	($var = $param)=~tr/a-zA-Z0-9_/_/c;
 	$var =~ s/^(?=\d)/_/;
@@ -1007,8 +1124,8 @@ END_OF_FUNC
 sub keywords {
     my($self,@values) = self_or_default(@_);
     # If values is provided, then we set it.
-    $self->{'keywords'}=[@values] if @values;
-    my(@result) = defined($self->{'keywords'}) ? @{$self->{'keywords'}} : ();
+    $self->{param}{'keywords'}=[@values] if @values;
+    my(@result) = defined($self->{param}{'keywords'}) ? @{$self->{param}{'keywords'}} : ();
     @result;
 }
 END_OF_FUNC
@@ -1082,6 +1199,12 @@ sub MethPost {
 }
 END_OF_FUNC
 
+'MethPut' => <<'END_OF_FUNC',
+sub MethPut {
+    return request_method() eq 'PUT';
+}
+END_OF_FUNC
+
 'TIEHASH' => <<'END_OF_FUNC',
 sub TIEHASH {
     my $class = shift;
@@ -1126,7 +1249,7 @@ END_OF_FUNC
 
 'EXISTS' => <<'END_OF_FUNC',
 sub EXISTS {
-    exists $_[0]->{$_[1]};
+    exists $_[0]->{param}{$_[1]};
 }
 END_OF_FUNC
 
@@ -1153,7 +1276,7 @@ sub append {
     my(@values) = defined($value) ? (ref($value) ? @{$value} : $value) : ();
     if (@values) {
 	$self->add_parameter($name);
-	push(@{$self->{$name}},@values);
+	push(@{$self->{param}{$name}},@values);
     }
     return $self->param($name);
 }
@@ -1220,14 +1343,15 @@ sub url_param {
 	if ($ENV{QUERY_STRING} =~ /=/) {
 	    my(@pairs) = split(/[&;]/,$ENV{QUERY_STRING});
 	    my($param,$value);
-	    foreach (@pairs) {
+	    for (@pairs) {
 		($param,$value) = split('=',$_,2);
 		$param = unescape($param);
 		$value = unescape($value);
 		push(@{$self->{'.url_param'}->{$param}},$value);
 	    }
 	} else {
-	    $self->{'.url_param'}->{'keywords'} = [$self->parse_keywordlist($ENV{QUERY_STRING})];
+        my @keywords = $self->parse_keywordlist($ENV{QUERY_STRING});
+	    $self->{'.url_param'}{'keywords'} = \@keywords if @keywords;
 	}
     }
     return keys %{$self->{'.url_param'}} unless defined($name);
@@ -1248,12 +1372,12 @@ sub Dump {
     my($param,$value,@result);
     return '<ul></ul>' unless $self->param;
     push(@result,"<ul>");
-    foreach $param ($self->param) {
-	my($name)=$self->escapeHTML($param);
-	push(@result,"<li><strong>$param</strong></li>");
+    for $param ($self->param) {
+	my($name)=$self->_maybe_escapeHTML($param);
+	push(@result,"<li><strong>$name</strong></li>");
 	push(@result,"<ul>");
-	foreach $value ($self->param($param)) {
-	    $value = $self->escapeHTML($value);
+	for $value ($self->param($param)) {
+	    $value = $self->_maybe_escapeHTML($value);
             $value =~ s/\n/<br \/>\n/g;
 	    push(@result,"<li>$value</li>");
 	}
@@ -1285,14 +1409,15 @@ sub save {
     my($param);
     local($,) = '';  # set print field separator back to a sane value
     local($\) = '';  # set output line separator to a sane value
-    foreach $param ($self->param) {
+    for $param ($self->param) {
 	my($escaped_param) = escape($param);
 	my($value);
-	foreach $value ($self->param($param)) {
-	    print $filehandle "$escaped_param=",escape("$value"),"\n";
+	for $value ($self->param($param)) {
+	    print $filehandle "$escaped_param=",escape("$value"),"\n"
+	        if length($escaped_param) or length($value);
 	}
     }
-    foreach (keys %{$self->{'.fieldnames'}}) {
+    for (keys %{$self->{'.fieldnames'}}) {
           print $filehandle ".cgifields=",escape("$_"),"\n";
     }
     print $filehandle "=\n";    # end of record
@@ -1331,7 +1456,7 @@ END_OF_FUNC
 'multipart_init' => <<'END_OF_FUNC',
 sub multipart_init {
     my($self,@p) = self_or_default(@_);
-    my($boundary,@other) = rearrange([BOUNDARY],@p);
+    my($boundary,@other) = rearrange_header([BOUNDARY],@p);
     $boundary = $boundary || '------- =_aaaaaaaaaa0';
     $self->{'separator'} = "$CRLF--$boundary$CRLF";
     $self->{'final_separator'} = "$CRLF--$boundary--$CRLF";
@@ -1361,7 +1486,7 @@ sub multipart_start {
 
     # rearrange() was designed for the HTML portion, so we
     # need to fix it up a little.
-    foreach (@other) {
+    for (@other) {
         # Don't use \s because of perl bug 21951
         next unless my($header,$value) = /([^ \r\n\t=]+)=\"?(.+?)\"?$/;
 	($_ = $header) =~ s/^(\w)(.*)/$1 . lc ($2) . ': '.$self->unescapeHTML($value)/e;
@@ -1417,23 +1542,40 @@ sub header {
                             'EXPIRES','NPH','CHARSET',
                             'ATTACHMENT','P3P'],@p);
 
+    # CR escaping for values, per RFC 822
+    for my $header ($type,$status,$cookie,$target,$expires,$nph,$charset,$attachment,$p3p,@other) {
+        if (defined $header) {
+            $header =~ s/
+                (?<=\n)    # For any character proceeded by a newline
+                (?=\S)     # ... that is not whitespace
+            / /xg;         # ... inject a leading space in the new line
+        }
+    }
+
     $nph     ||= $NPH;
+
+    $type ||= 'text/html' unless defined($type);
+
     if (defined $charset) {
       $self->charset($charset);
     } else {
-      $charset = $self->charset;
+      $charset = $self->charset if $type =~ /^text\//;
     }
+   $charset ||= '';
 
     # rearrange() was designed for the HTML portion, so we
     # need to fix it up a little.
-    foreach (@other) {
+    for (@other) {
         # Don't use \s because of perl bug 21951
-        next unless my($header,$value) = /([^ \r\n\t=]+)=\"?(.+?)\"?$/;
+        next unless my($header,$value) = /([^ \r\n\t=]+)=\"?(.+?)\"?$/s;
         ($_ = $header) =~ s/^(\w)(.*)/"\u$1\L$2" . ': '.$self->unescapeHTML($value)/e;
     }
 
-    $type ||= 'text/html' unless defined($type);
-    $type .= "; charset=$charset" if $type ne '' and $type =~ m!^text/! and $type !~ /\bcharset\b/ and $charset ne '';
+    $type .= "; charset=$charset"
+      if     $type ne ''
+         and $type !~ /\bcharset\b/
+         and defined $charset
+         and $charset ne '';
 
     # Maybe future compatibility.  Maybe not.
     my $protocol = $ENV{SERVER_PROTOCOL} || 'HTTP/1.0';
@@ -1449,7 +1591,7 @@ sub header {
     # push all the cookies -- there may be several
     if ($cookie) {
 	my(@cookie) = ref($cookie) && ref($cookie) eq 'ARRAY' ? @{$cookie} : $cookie;
-	foreach (@cookie) {
+	for (@cookie) {
             my $cs = UNIVERSAL::isa($_,'CGI::Cookie') ? $_->as_string : $_;
 	    push(@header,"Set-Cookie: $cs") if $cs ne '';
 	}
@@ -1465,7 +1607,7 @@ sub header {
     push(@header,map {ucfirst $_} @other);
     push(@header,"Content-Type: $type") if $type ne '';
     my $header = join($CRLF,@header)."${CRLF}${CRLF}";
-    if ($MOD_PERL and not $nph) {
+    if (($MOD_PERL >= 1) && !$nph) {
         $self->r->send_cgi_header($header);
         return '';
     }
@@ -1499,10 +1641,10 @@ sub redirect {
     my($self,@p) = self_or_default(@_);
     my($url,$target,$status,$cookie,$nph,@other) = 
          rearrange([[LOCATION,URI,URL],TARGET,STATUS,['COOKIE','COOKIES'],NPH],@p);
-    $status = '302 Moved' unless defined $status;
+    $status = '302 Found' unless defined $status;
     $url ||= $self->self_url;
     my(@o);
-    foreach (@other) { tr/\"//d; push(@o,split("=",$_,2)); }
+    for (@other) { tr/\"//d; push(@o,split("=",$_,2)); }
     unshift(@o,
 	 '-Status'  => $status,
 	 '-Location'=> $url,
@@ -1546,7 +1688,7 @@ sub start_html {
     $self->element_id(0);
     $self->element_tab(0);
 
-    $encoding = 'iso-8859-1' unless defined $encoding;
+    $encoding = lc($self->charset) unless defined $encoding;
 
     # Need to sort out the DTD before it's okay to call escapeHTML().
     my(@result,$xml_dtd);
@@ -1575,10 +1717,10 @@ sub start_html {
     # Now that we know whether we're using the HTML 3.2 DTD or not, it's okay to
     # call escapeHTML().  Strangely enough, the title needs to be escaped as
     # HTML while the author needs to be escaped as a URL.
-    $title = $self->escapeHTML($title || 'Untitled Document');
+    $title = $self->_maybe_escapeHTML($title || 'Untitled Document');
     $author = $self->escape($author);
 
-    if ($DTD_PUBLIC_IDENTIFIER =~ /[^X]HTML (2\.0|3\.2)/i) {
+    if ($DTD_PUBLIC_IDENTIFIER =~ /[^X]HTML (2\.0|3\.2|4\.01?)/i) {
 	$lang = "" unless defined $lang;
 	$XHTML = 0;
     }
@@ -1605,16 +1747,26 @@ sub start_html {
     }
 
     if ($meta && ref($meta) && (ref($meta) eq 'HASH')) {
-	foreach (keys %$meta) { push(@result,$XHTML ? qq(<meta name="$_" content="$meta->{$_}" />) 
+	for (keys %$meta) { push(@result,$XHTML ? qq(<meta name="$_" content="$meta->{$_}" />) 
 			: qq(<meta name="$_" content="$meta->{$_}">)); }
     }
 
-    push(@result,ref($head) ? @$head : $head) if $head;
+    my $meta_bits_set = 0;
+    if( $head ) {
+        if( ref $head ) {
+            push @result, @$head;
+            $meta_bits_set = 1 if grep { /http-equiv=["']Content-Type/i }@$head;
+        }
+        else {
+            push @result, $head;
+            $meta_bits_set = 1 if $head =~ /http-equiv=["']Content-Type/i;
+        }
+    }
 
     # handle the infrequently-used -style and -script parameters
     push(@result,$self->_style($style))   if defined $style;
     push(@result,$self->_script($script)) if defined $script;
-    push(@result,$meta_bits)              if defined $meta_bits;
+    push(@result,$meta_bits)              if defined $meta_bits and !$meta_bits_set;
 
     # handle -noscript parameter
     push(@result,<<END) if $noscript;
@@ -1636,47 +1788,52 @@ END_OF_FUNC
 sub _style {
     my ($self,$style) = @_;
     my (@result);
+
     my $type = 'text/css';
+    my $rel  = 'stylesheet';
+
 
     my $cdata_start = $XHTML ? "\n<!--/* <![CDATA[ */" : "\n<!-- ";
     my $cdata_end   = $XHTML ? "\n/* ]]> */-->\n" : " -->\n";
 
     my @s = ref($style) eq 'ARRAY' ? @$style : $style;
+    my $other = '';
 
     for my $s (@s) {
       if (ref($s)) {
-       my($src,$code,$verbatim,$stype,$foo,@other) =
-           rearrange([qw(SRC CODE VERBATIM TYPE FOO)],
+       my($src,$code,$verbatim,$stype,$alternate,$foo,@other) =
+           rearrange([qw(SRC CODE VERBATIM TYPE ALTERNATE FOO)],
                       ('-foo'=>'bar',
                        ref($s) eq 'ARRAY' ? @$s : %$s));
-       $type  = $stype if $stype;
-       my $other = @other ? join ' ',@other : '';
+       my $type = defined $stype ? $stype : 'text/css';
+       my $rel  = $alternate ? 'alternate stylesheet' : 'stylesheet';
+       $other = "@other" if @other;
 
        if (ref($src) eq "ARRAY") # Check to see if the $src variable is an array reference
        { # If it is, push a LINK tag for each one
-           foreach $src (@$src)
+           for $src (@$src)
          {
-           push(@result,$XHTML ? qq(<link rel="stylesheet" type="$type" href="$src" $other/>)
-                             : qq(<link rel="stylesheet" type="$type" href="$src"$other>)) if $src;
+           push(@result,$XHTML ? qq(<link rel="$rel" type="$type" href="$src" $other/>)
+                             : qq(<link rel="$rel" type="$type" href="$src"$other>)) if $src;
          }
        }
        else
        { # Otherwise, push the single -src, if it exists.
-         push(@result,$XHTML ? qq(<link rel="stylesheet" type="$type" href="$src" $other/>)
-                             : qq(<link rel="stylesheet" type="$type" href="$src"$other>)
+         push(@result,$XHTML ? qq(<link rel="$rel" type="$type" href="$src" $other/>)
+                             : qq(<link rel="$rel" type="$type" href="$src"$other>)
               ) if $src;
         }
      if ($verbatim) {
            my @v = ref($verbatim) eq 'ARRAY' ? @$verbatim : $verbatim;
-           push(@result, "<style type=\"text/css\">\n$_\n</style>") foreach @v;
+           push(@result, "<style type=\"text/css\">\n$_\n</style>") for @v;
       }
       my @c = ref($code) eq 'ARRAY' ? @$code : $code if $code;
-      push(@result,style({'type'=>$type},"$cdata_start\n$_\n$cdata_end")) foreach @c;
+      push(@result,style({'type'=>$type},"$cdata_start\n$_\n$cdata_end")) for @c;
 
       } else {
            my $src = $s;
-           push(@result,$XHTML ? qq(<link rel="stylesheet" type="$type" href="$src" $other/>)
-                               : qq(<link rel="stylesheet" type="$type" href="$src"$other>));
+           push(@result,$XHTML ? qq(<link rel="$rel" type="$type" href="$src" $other/>)
+                               : qq(<link rel="$rel" type="$type" href="$src"$other>));
       }
     }
     @result;
@@ -1689,22 +1846,20 @@ sub _script {
     my (@result);
 
     my (@scripts) = ref($script) eq 'ARRAY' ? @$script : ($script);
-    foreach $script (@scripts) {
+    for $script (@scripts) {
 	my($src,$code,$language);
 	if (ref($script)) { # script is a hash
-	    ($src,$code,$language, $type) =
-		rearrange([SRC,CODE,LANGUAGE,TYPE],
+	    ($src,$code,$type) =
+		rearrange(['SRC','CODE',['LANGUAGE','TYPE']],
 				 '-foo'=>'bar',	# a trick to allow the '-' to be omitted
 				 ref($script) eq 'ARRAY' ? @$script : %$script);
-            # User may not have specified language
-            $language ||= 'JavaScript';
-            unless (defined $type) {
-                $type = lc $language;
-                # strip '1.2' from 'javascript1.2'
-                $type =~ s/^(\D+).*$/text\/$1/;
+            $type ||= 'text/javascript';
+            unless ($type =~ m!\w+/\w+!) {
+                $type =~ s/[\d.]+$//;
+                $type = "text/$type";
             }
 	} else {
-	    ($src,$code,$language, $type) = ('',$script,'JavaScript', 'text/javascript');
+	    ($src,$code,$type) = ('',$script, 'text/javascript');
 	}
 
     my $comment = '//';  # javascript by default
@@ -1722,7 +1877,6 @@ sub _script {
    }
      my(@satts);
      push(@satts,'src'=>$src) if $src;
-     push(@satts,'language'=>$language) unless defined $type;
      push(@satts,'type'=>$type);
      $code = $cdata_start . $code . $cdata_end if defined $code;
      push(@result,$self->script({@satts},$code || ''));
@@ -1764,6 +1918,7 @@ END_OF_FUNC
 
 
 #### Method: startform
+# This method is DEPRECATED
 # Start a form
 # Parameters:
 #   $method -> optional submission method to use (GET or POST)
@@ -1776,13 +1931,13 @@ sub startform {
     my($method,$action,$enctype,@other) = 
 	rearrange([METHOD,ACTION,ENCTYPE],@p);
 
-    $method  = $self->escapeHTML(lc($method) || 'post');
-    $enctype = $self->escapeHTML($enctype || &URL_ENCODED);
+    $method  = $self->_maybe_escapeHTML(lc($method || 'post'));
+    $enctype = $self->_maybe_escapeHTML($enctype || &URL_ENCODED);
     if (defined $action) {
-       $action = $self->escapeHTML($action);
+       $action = $self->_maybe_escapeHTML($action);
     }
     else {
-       $action = $self->escapeHTML($self->request_uri);
+       $action = $self->_maybe_escapeHTML($self->request_uri || $self->self_url);
     }
     $action = qq(action="$action");
     my($other) = @other ? " @other" : '';
@@ -1791,54 +1946,79 @@ sub startform {
 }
 END_OF_FUNC
 
-
 #### Method: start_form
-# synonym for startform
+# Start a form
+# Parameters:
+#   $method -> optional submission method to use (GET or POST)
+#   $action -> optional URL of script to run
+#   $enctype ->encoding to use (URL_ENCODED or MULTIPART)
 'start_form' => <<'END_OF_FUNC',
 sub start_form {
-    $XHTML ? &start_multipart_form : &startform;
-}
-END_OF_FUNC
+    my($self,@p) = self_or_default(@_);
 
-'end_multipart_form' => <<'END_OF_FUNC',
-sub end_multipart_form {
-    &endform;
+    my($method,$action,$enctype,@other) = 
+	rearrange([METHOD,ACTION,ENCTYPE],@p);
+
+    $method  = $self->_maybe_escapeHTML(lc($method || 'post'));
+
+    if( $XHTML ){
+        $enctype = $self->_maybe_escapeHTML($enctype || &MULTIPART);
+    }else{
+        $enctype = $self->_maybe_escapeHTML($enctype || &URL_ENCODED);
+    }
+
+    if (defined $action) {
+       $action = $self->_maybe_escapeHTML($action);
+    }
+    else {
+       $action = $self->_maybe_escapeHTML($self->request_uri || $self->self_url);
+    }
+    $action = qq(action="$action");
+    my($other) = @other ? " @other" : '';
+    $self->{'.parametersToAdd'}={};
+    return qq/<form method="$method" $action enctype="$enctype"$other>\n/;
 }
 END_OF_FUNC
 
 #### Method: start_multipart_form
-# synonym for startform
 'start_multipart_form' => <<'END_OF_FUNC',
 sub start_multipart_form {
     my($self,@p) = self_or_default(@_);
     if (defined($p[0]) && substr($p[0],0,1) eq '-') {
-	my(%p) = @p;
-	$p{'-enctype'}=&MULTIPART;
-	return $self->startform(%p);
+      return $self->start_form(-enctype=>&MULTIPART,@p);
     } else {
 	my($method,$action,@other) = 
 	    rearrange([METHOD,ACTION],@p);
-	return $self->startform($method,$action,&MULTIPART,@other);
+	return $self->start_form($method,$action,&MULTIPART,@other);
     }
 }
 END_OF_FUNC
 
 
-#### Method: endform
+
+#### Method: end_form
 # End a form
-'endform' => <<'END_OF_FUNC',
-sub endform {
+'end_form' => <<'END_OF_FUNC',
+sub end_form {
     my($self,@p) = self_or_default(@_);
     if ( $NOSTICKY ) {
-    return wantarray ? ("</form>") : "\n</form>";
+        return wantarray ? ("</form>") : "\n</form>";
     } else {
-      if (my @fields = $self->get_fields) {
-         return wantarray ? ("<div>",@fields,"</div>","</form>")
-                          : "<div>".(join '',@fields)."</div>\n</form>";
-      } else {
-         return "</form>";
-      }
+        if (my @fields = $self->get_fields) {
+            return wantarray ? ("<div>",@fields,"</div>","</form>")
+                             : "<div>".(join '',@fields)."</div>\n</form>";
+        } else {
+            return "</form>";
+        }
     }
+}
+END_OF_FUNC
+
+#### Method: end_multipart_form
+# end a multipart form
+'end_multipart_form' => <<'END_OF_FUNC',
+sub end_multipart_form {
+    &end_form;
 }
 END_OF_FUNC
 
@@ -1852,8 +2032,8 @@ sub _textfield {
     my $current = $override ? $default : 
 	(defined($self->param($name)) ? $self->param($name) : $default);
 
-    $current = defined($current) ? $self->escapeHTML($current,1) : '';
-    $name = defined($name) ? $self->escapeHTML($name) : '';
+    $current = defined($current) ? $self->_maybe_escapeHTML($current,1) : '';
+    $name = defined($name) ? $self->_maybe_escapeHTML($name) : '';
     my($s) = defined($size) ? qq/ size="$size"/ : '';
     my($m) = defined($maxlength) ? qq/ maxlength="$maxlength"/ : '';
     my($other) = @other ? " @other" : '';
@@ -1937,8 +2117,8 @@ sub textarea {
     my($current)= $override ? $default :
 	(defined($self->param($name)) ? $self->param($name) : $default);
 
-    $name = defined($name) ? $self->escapeHTML($name) : '';
-    $current = defined($current) ? $self->escapeHTML($current) : '';
+    $name = defined($name) ? $self->_maybe_escapeHTML($name) : '';
+    $current = defined($current) ? $self->_maybe_escapeHTML($current) : '';
     my($r) = $rows ? qq/ rows="$rows"/ : '';
     my($c) = $cols ? qq/ cols="$cols"/ : '';
     my($other) = @other ? " @other" : '';
@@ -1965,9 +2145,11 @@ sub button {
     my($label,$value,$script,$tabindex,@other) = rearrange([NAME,[VALUE,LABEL],
 						            [ONCLICK,SCRIPT],TABINDEX],@p);
 
-    $label=$self->escapeHTML($label);
-    $value=$self->escapeHTML($value,1);
-    $script=$self->escapeHTML($script);
+    $label=$self->_maybe_escapeHTML($label);
+    $value=$self->_maybe_escapeHTML($value,1);
+    $script=$self->_maybe_escapeHTML($script);
+
+    $script ||= '';
 
     my($name) = '';
     $name = qq/ name="$label"/ if $label;
@@ -1998,8 +2180,8 @@ sub submit {
 
     my($label,$value,$tabindex,@other) = rearrange([NAME,[VALUE,LABEL],TABINDEX],@p);
 
-    $label=$self->escapeHTML($label);
-    $value=$self->escapeHTML($value,1);
+    $label=$self->_maybe_escapeHTML($label);
+    $value=$self->_maybe_escapeHTML($value,1);
 
     my $name = $NOSTICKY ? '' : 'name=".submit" ';
     $name = qq/name="$label" / if defined($label);
@@ -2025,8 +2207,8 @@ END_OF_FUNC
 sub reset {
     my($self,@p) = self_or_default(@_);
     my($label,$value,$tabindex,@other) = rearrange(['NAME',['VALUE','LABEL'],TABINDEX],@p);
-    $label=$self->escapeHTML($label);
-    $value=$self->escapeHTML($value,1);
+    $label=$self->_maybe_escapeHTML($label);
+    $value=$self->_maybe_escapeHTML($value,1);
     my ($name) = ' name=".reset"';
     $name = qq/ name="$label"/ if defined($label);
     $value = defined($value) ? $value : $label;
@@ -2057,7 +2239,7 @@ sub defaults {
 
     my($label,$tabindex,@other) = rearrange([[NAME,VALUE],TABINDEX],@p);
 
-    $label=$self->escapeHTML($label,1);
+    $label=$self->_maybe_escapeHTML($label,1);
     $label = $label || "Defaults";
     my($value) = qq/ value="$label"/;
     my($other) = @other ? " @other" : '';
@@ -2094,8 +2276,9 @@ END_OF_FUNC
 sub checkbox {
     my($self,@p) = self_or_default(@_);
 
-    my($name,$checked,$value,$label,$override,$tabindex,@other) = 
-	rearrange([NAME,[CHECKED,SELECTED,ON],VALUE,LABEL,[OVERRIDE,FORCE],TABINDEX],@p);
+    my($name,$checked,$value,$label,$labelattributes,$override,$tabindex,@other) =
+       rearrange([NAME,[CHECKED,SELECTED,ON],VALUE,LABEL,LABELATTRIBUTES,
+                   [OVERRIDE,FORCE],TABINDEX],@p);
 
     $value = defined $value ? $value : 'on';
 
@@ -2106,51 +2289,53 @@ sub checkbox {
 	$checked = $self->_checked($checked);
     }
     my($the_label) = defined $label ? $label : $name;
-    $name = $self->escapeHTML($name);
-    $value = $self->escapeHTML($value,1);
-    $the_label = $self->escapeHTML($the_label);
+    $name = $self->_maybe_escapeHTML($name);
+    $value = $self->_maybe_escapeHTML($value,1);
+    $the_label = $self->_maybe_escapeHTML($the_label);
     my($other) = @other ? "@other " : '';
     $tabindex = $self->element_tab($tabindex);
     $self->register_parameter($name);
-    return $XHTML ? CGI::label(qq{<input type="checkbox" name="$name" value="$value" $tabindex$checked$other/>$the_label})
+    return $XHTML ? CGI::label($labelattributes,
+                    qq{<input type="checkbox" name="$name" value="$value" $tabindex$checked$other/>$the_label})
                   : qq{<input type="checkbox" name="$name" value="$value"$checked$other>$the_label};
 }
 END_OF_FUNC
 
 
 
-# Escape HTML -- used internally
+# Escape HTML
 'escapeHTML' => <<'END_OF_FUNC',
 sub escapeHTML {
-         # hack to work around  earlier hacks
-         push @_,$_[0] if @_==1 && $_[0] eq 'CGI';
-         my ($self,$toencode,$newlinestoo) = CGI::self_or_default(@_);
-         return undef unless defined($toencode);
-         return $toencode if ref($self) && !$self->{'escape'};
-         $toencode =~ s{&}{&amp;}gso;
-         $toencode =~ s{<}{&lt;}gso;
-         $toencode =~ s{>}{&gt;}gso;
-	 if ($DTD_PUBLIC_IDENTIFIER =~ /[^X]HTML 3\.2/i) {
-	     # $quot; was accidentally omitted from the HTML 3.2 DTD -- see
-	     # <http://validator.w3.org/docs/errors.html#bad-entity> /
-	     # <http://lists.w3.org/Archives/Public/www-html/1997Mar/0003.html>.
-	     $toencode =~ s{"}{&#34;}gso;
-         }
-         else {
-	     $toencode =~ s{"}{&quot;}gso;
-         }
-         my $latin = uc $self->{'.charset'} eq 'ISO-8859-1' ||
-                     uc $self->{'.charset'} eq 'WINDOWS-1252';
-         if ($latin) {  # bug in some browsers
+     # hack to work around  earlier hacks
+     push @_,$_[0] if @_==1 && $_[0] eq 'CGI';
+     my ($self,$toencode,$newlinestoo) = CGI::self_or_default(@_);
+     return undef unless defined($toencode);
+     $toencode =~ s{&}{&amp;}gso;
+     $toencode =~ s{<}{&lt;}gso;
+     $toencode =~ s{>}{&gt;}gso;
+     if ($DTD_PUBLIC_IDENTIFIER =~ /[^X]HTML 3\.2/i) {
+     # $quot; was accidentally omitted from the HTML 3.2 DTD -- see
+     # <http://validator.w3.org/docs/errors.html#bad-entity> /
+     # <http://lists.w3.org/Archives/Public/www-html/1997Mar/0003.html>.
+        $toencode =~ s{"}{&#34;}gso;
+     }
+     else {
+        $toencode =~ s{"}{&quot;}gso;
+     }
+
+    # Handle bug in some browsers with Latin charsets
+    if ($self->{'.charset'} 
+            && (uc($self->{'.charset'}) eq 'ISO-8859-1' 
+            || uc($self->{'.charset'}) eq 'WINDOWS-1252')) {
                 $toencode =~ s{'}{&#39;}gso;
                 $toencode =~ s{\x8b}{&#8249;}gso;
                 $toencode =~ s{\x9b}{&#8250;}gso;
-                if (defined $newlinestoo && $newlinestoo) {
-                     $toencode =~ s{\012}{&#10;}gso;
-                     $toencode =~ s{\015}{&#13;}gso;
-                }
-         }
-         return $toencode;
+        if (defined $newlinestoo && $newlinestoo) {
+            $toencode =~ s{\012}{&#10;}gso;
+            $toencode =~ s{\015}{&#13;}gso;
+        }
+    }
+    return $toencode;
 }
 END_OF_FUNC
 
@@ -2164,7 +2349,7 @@ sub unescapeHTML {
     my $latin = defined $self->{'.charset'} ? $self->{'.charset'} =~ /^(ISO-8859-1|WINDOWS-1252)$/i
                                             : 1;
     # thanks to Randal Schwartz for the correct solution to this one
-    $string=~ s[&(.*?);]{
+    $string=~ s[&(\S*?);]{
 	local $_ = $1;
 	/^amp$/i	? "&" :
 	/^quot$/i	? '"' :
@@ -2198,7 +2383,7 @@ sub _tableize {
     my($row,$column);
     unshift(@colheaders,'') if @colheaders && @rowheaders;
     $result .= "<tr>" if @colheaders;
-    foreach (@colheaders) {
+    for (@colheaders) {
 	$result .= "<th>$_</th>";
     }
     for ($row=0;$row<$rows;$row++) {
@@ -2227,7 +2412,7 @@ END_OF_FUNC
 #   $linebreak -> (optional) Set to true to place linebreaks
 #             between the buttons.
 #   $labels -> (optional)
-#             A pointer to an associative array of labels to print next to each checkbox
+#             A pointer to a hash of labels to print next to each checkbox
 #             in the form $label{'value'}="Long explanatory label".
 #             Otherwise the provided values are used as the labels.
 # Returns:
@@ -2255,7 +2440,7 @@ END_OF_FUNC
 #   $linebreak -> (optional) Set to true to place linebreaks
 #             between the buttons.
 #   $labels -> (optional)
-#             A pointer to an associative array of labels to print next to each checkbox
+#             A pointer to a hash of labels to print next to each checkbox
 #             in the form $label{'value'}="Long explanatory label".
 #             Otherwise the provided values are used as the labels.
 # Returns:
@@ -2274,24 +2459,24 @@ sub _box_group {
     my $self     = shift;
     my $box_type = shift;
 
-    my($name,$values,$defaults,$linebreak,$labels,$attributes,
-       $rows,$columns,$rowheaders,$colheaders,
-       $override,$nolabels,$tabindex,@other) =
-       rearrange([      NAME,[VALUES,VALUE],[DEFAULT,DEFAULTS],LINEBREAK,LABELS,ATTRIBUTES,
-		        ROWS,[COLUMNS,COLS],ROWHEADERS,COLHEADERS,
-			[OVERRIDE,FORCE],NOLABELS,TABINDEX
-                 ],@_);
-    my($result,$checked);
+    my($name,$values,$defaults,$linebreak,$labels,$labelattributes,
+       $attributes,$rows,$columns,$rowheaders,$colheaders,
+       $override,$nolabels,$tabindex,$disabled,@other) =
+        rearrange([NAME,[VALUES,VALUE],[DEFAULT,DEFAULTS],LINEBREAK,LABELS,LABELATTRIBUTES,
+                       ATTRIBUTES,ROWS,[COLUMNS,COLS],[ROWHEADERS,ROWHEADER],[COLHEADERS,COLHEADER],
+                       [OVERRIDE,FORCE],NOLABELS,TABINDEX,DISABLED
+                  ],@_);
 
 
-    my(@elements,@values);
+    my($result,$checked,@elements,@values);
+
     @values = $self->_set_values_and_labels($values,\$labels,$name);
     my %checked = $self->previous_or_default($name,$defaults,$override);
 
     # If no check array is specified, check the first by default
     $checked{$values[0]}++ if $box_type eq 'radio' && !%checked;
 
-    $name=$self->escapeHTML($name);
+    $name=$self->_maybe_escapeHTML($name);
 
     my %tabs = ();
     if ($TABINDEX && $tabindex) {
@@ -2304,10 +2489,21 @@ sub _box_group {
       }
     }
     %tabs = map {$_=>$self->element_tab} @values unless %tabs;
-
     my $other = @other ? "@other " : '';
     my $radio_checked;
-    foreach (@values) {
+
+    # for disabling groups of radio/checkbox buttons
+    my %disabled;
+    for (@{$disabled}) {
+   	$disabled{$_}=1;
+    }
+
+    for (@values) {
+    	 my $disable="";
+	 if ($disabled{$_}) {
+		$disable="disabled='1'";
+	 }
+
         my $checkit = $self->_checked($box_type eq 'radio' ? ($checked{$_} && !$radio_checked++)
                                                            : $checked{$_});
 	my($break);
@@ -2321,17 +2517,19 @@ sub _box_group {
 	unless (defined($nolabels) && $nolabels) {
 	    $label = $_;
 	    $label = $labels->{$_} if defined($labels) && defined($labels->{$_});
-	    $label = $self->escapeHTML($label,1);
+	    $label = $self->_maybe_escapeHTML($label,1);
+            $label = "<span style=\"color:gray\">$label</span>" if $disabled{$_};
 	}
         my $attribs = $self->_set_attributes($_, $attributes);
         my $tab     = $tabs{$_};
-	$_=$self->escapeHTML($_);
+	$_=$self->_maybe_escapeHTML($_);
+
         if ($XHTML) {
            push @elements,
-              CGI::label(
-                   qq(<input type="$box_type" name="$name" value="$_" $checkit$other$tab$attribs/>$label)).${break};
+              CGI::label($labelattributes,
+                   qq(<input type="$box_type" name="$name" value="$_" $checkit$other$tab$attribs$disable/>$label)).${break};
         } else {
-           push(@elements,qq/<input type="$box_type" name="$name" value="$_"$checkit$other$tab$attribs>${label}${break}/);
+            push(@elements,qq/<input type="$box_type" name="$name" value="$_" $checkit$other$tab$attribs$disable>${label}${break}/);
         }
     }
     $self->register_parameter($name);
@@ -2350,7 +2548,7 @@ END_OF_FUNC
 #             text of each menu item.
 #   $default -> (optional) Default item to display
 #   $labels -> (optional)
-#             A pointer to an associative array of labels to print next to each checkbox
+#             A pointer to a hash of labels to print next to each checkbox
 #             in the form $label{'value'}="Long explanatory label".
 #             Otherwise the provided values are used as the labels.
 # Returns:
@@ -2363,36 +2561,41 @@ sub popup_menu {
     my($name,$values,$default,$labels,$attributes,$override,$tabindex,@other) =
        rearrange([NAME,[VALUES,VALUE],[DEFAULT,DEFAULTS],LABELS,
        ATTRIBUTES,[OVERRIDE,FORCE],TABINDEX],@p);
-    my($result,$selected);
+    my($result,%selected);
 
     if (!$override && defined($self->param($name))) {
-	$selected = $self->param($name);
-    } else {
-	$selected = $default;
+	$selected{$self->param($name)}++;
+    } elsif (defined $default) {
+	%selected = map {$_=>1} ref($default) eq 'ARRAY' 
+                                ? @$default 
+                                : $default;
     }
-    $name=$self->escapeHTML($name);
+    $name=$self->_maybe_escapeHTML($name);
     my($other) = @other ? " @other" : '';
 
     my(@values);
     @values = $self->_set_values_and_labels($values,\$labels,$name);
     $tabindex = $self->element_tab($tabindex);
+    $name = q{} if ! defined $name;
     $result = qq/<select name="$name" $tabindex$other>\n/;
-    foreach (@values) {
+    for (@values) {
         if (/<optgroup/) {
-            foreach (split(/\n/)) {
+            for my $v (split(/\n/)) {
                 my $selectit = $XHTML ? 'selected="selected"' : 'selected';
-                s/(value="$selected")/$selectit $1/ if defined $selected;
-                $result .= "$_\n";
+		for my $selected (keys %selected) {
+		    $v =~ s/(value="\Q$selected\E")/$selectit $1/;
+		}
+                $result .= "$v\n";
             }
         }
         else {
-            my $attribs = $self->_set_attributes($_, $attributes);
-	my($selectit) = defined($selected) ? $self->_selected($selected eq $_) : '';
-	my($label) = $_;
-	$label = $labels->{$_} if defined($labels) && defined($labels->{$_});
-	my($value) = $self->escapeHTML($_);
-	$label=$self->escapeHTML($label,1);
-            $result .= "<option $selectit${attribs}value=\"$value\">$label</option>\n";
+          my $attribs   = $self->_set_attributes($_, $attributes);
+	  my($selectit) = $self->_selected($selected{$_});
+	  my($label)    = $_;
+	  $label        = $labels->{$_} if defined($labels) && defined($labels->{$_});
+	  my($value)    = $self->_maybe_escapeHTML($_);
+	  $label        = $self->_maybe_escapeHTML($label,1);
+          $result      .= "<option${attribs} ${selectit}value=\"$value\">$label</option>\n";
         }
     }
 
@@ -2409,7 +2612,7 @@ END_OF_FUNC
 #   $values -> A pointer to a regular array containing the
 #              values for each option line in the group.
 #   $labels -> (optional)
-#              A pointer to an associative array of labels to print next to each item
+#              A pointer to a hash of labels to print next to each item
 #              in the form $label{'value'}="Long explanatory label".
 #              Otherwise the provided values are used as the labels.
 #   $labeled -> (optional)
@@ -2434,11 +2637,11 @@ sub optgroup {
     @values = $self->_set_values_and_labels($values,\$labels,$name,$labeled,$novals);
     my($other) = @other ? " @other" : '';
 
-    $name=$self->escapeHTML($name);
+    $name = $self->_maybe_escapeHTML($name) || q{};
     $result = qq/<optgroup label="$name"$other>\n/;
-    foreach (@values) {
+    for (@values) {
         if (/<optgroup/) {
-            foreach (split(/\n/)) {
+            for (split(/\n/)) {
                 my $selectit = $XHTML ? 'selected="selected"' : 'selected';
                 s/(value="$selected")/$selectit $1/ if defined $selected;
                 $result .= "$_\n";
@@ -2448,8 +2651,8 @@ sub optgroup {
             my $attribs = $self->_set_attributes($_, $attributes);
             my($label) = $_;
             $label = $labels->{$_} if defined($labels) && defined($labels->{$_});
-            $label=$self->escapeHTML($label);
-            my($value)=$self->escapeHTML($_,1);
+            $label=$self->_maybe_escapeHTML($label);
+            my($value)=$self->_maybe_escapeHTML($_,1);
             $result .= $labeled ? $novals ? "<option$attribs label=\"$value\">$label</option>\n"
                                           : "<option$attribs label=\"$value\" value=\"$value\">$label</option>\n"
                                 : $novals ? "<option$attribs>$label</option>\n"
@@ -2476,7 +2679,7 @@ END_OF_FUNC
 #   $size -> (optional) Size of the list.
 #   $multiple -> (optional) If set, allow multiple selections.
 #   $labels -> (optional)
-#             A pointer to an associative array of labels to print next to each checkbox
+#             A pointer to a hash of labels to print next to each checkbox
 #             in the form $label{'value'}="Long explanatory label".
 #             Otherwise the provided values are used as the labels.
 # Returns:
@@ -2495,22 +2698,35 @@ sub scrolling_list {
     $size = $size || scalar(@values);
 
     my(%selected) = $self->previous_or_default($name,$defaults,$override);
+
     my($is_multiple) = $multiple ? qq/ multiple="multiple"/ : '';
     my($has_size) = $size ? qq/ size="$size"/: '';
     my($other) = @other ? " @other" : '';
 
-    $name=$self->escapeHTML($name);
+    $name=$self->_maybe_escapeHTML($name);
     $tabindex = $self->element_tab($tabindex);
     $result = qq/<select name="$name" $tabindex$has_size$is_multiple$other>\n/;
-    foreach (@values) {
-	my($selectit) = $self->_selected($selected{$_});
-	my($label) = $_;
-	$label = $labels->{$_} if defined($labels) && defined($labels->{$_});
-	$label=$self->escapeHTML($label);
-	my($value)=$self->escapeHTML($_,1);
-        my $attribs = $self->_set_attributes($_, $attributes);
-        $result .= "<option ${selectit}${attribs}value=\"$value\">$label</option>\n";
+    for (@values) {
+        if (/<optgroup/) {
+            for my $v (split(/\n/)) {
+                my $selectit = $XHTML ? 'selected="selected"' : 'selected';
+		for my $selected (keys %selected) {
+		    $v =~ s/(value="$selected")/$selectit $1/;
+		}
+                $result .= "$v\n";
+            }
+        }
+        else {
+          my $attribs   = $self->_set_attributes($_, $attributes);
+	  my($selectit) = $self->_selected($selected{$_});
+	  my($label)    = $_;
+	  $label        = $labels->{$_} if defined($labels) && defined($labels->{$_});
+	  my($value)    = $self->_maybe_escapeHTML($_);
+	  $label        = $self->_maybe_escapeHTML($label,1);
+          $result      .= "<option${attribs} ${selectit}value=\"$value\">$label</option>\n";
+        }
     }
+
     $result .= "</select>";
     $self->register_parameter($name);
     return $result;
@@ -2542,18 +2758,19 @@ sub hidden {
 	@value = ref($default) ? @{$default} : $default;
 	$do_override = $override;
     } else {
-	foreach ($default,$override,@other) {
+	for ($default,$override,@other) {
 	    push(@value,$_) if defined($_);
 	}
+        undef @other;
     }
 
     # use previous values if override is not set
     my @prev = $self->param($name);
     @value = @prev if !$do_override && @prev;
 
-    $name=$self->escapeHTML($name);
-    foreach (@value) {
-	$_ = defined($_) ? $self->escapeHTML($_,1) : '';
+    $name=$self->_maybe_escapeHTML($name);
+    for (@value) {
+	$_ = defined($_) ? $self->_maybe_escapeHTML($_,1) : '';
 	push @result,$XHTML ? qq(<input type="hidden" name="$name" value="$_" @other />)
                             : qq(<input type="hidden" name="$name" value="$_" @other>);
     }
@@ -2577,9 +2794,9 @@ sub image_button {
     my($name,$src,$alignment,@other) =
 	rearrange([NAME,SRC,ALIGN],@p);
 
-    my($align) = $alignment ? " align=\U\"$alignment\"" : '';
+    my($align) = $alignment ? " align=\L\"$alignment\"" : '';
     my($other) = @other ? " @other" : '';
-    $name=$self->escapeHTML($name);
+    $name=$self->_maybe_escapeHTML($name);
     return $XHTML ? qq(<input type="image" name="$name" src="$src"$align$other />)
                   : qq/<input type="image" name="$name" src="$src"$align$other>/;
 }
@@ -2624,39 +2841,43 @@ sub url {
 
     my $path        =  $self->path_info;
     my $script_name =  $self->script_name;
-    my $request_uri = $self->request_uri || '';
+    my $request_uri =  unescape($self->request_uri) || '';
     my $query_str   =  $self->query_string;
 
-    my $rewrite_in_use = $request_uri && $request_uri !~ /^$script_name/;
+    my $rewrite_in_use = $request_uri && $request_uri !~ /^\Q$script_name/;
     undef $path if $rewrite_in_use && $rewrite;  # path not valid when rewriting active
 
     my $uri         =  $rewrite && $request_uri ? $request_uri : $script_name;
-    $uri            =~ s/\?.*$//;                                 # remove query string
-    $uri            =~ s/$path$//      if defined $path;          # remove path
+    $uri            =~ s/\?.*$//s;                                # remove query string
+    $uri            =~ s/\Q$ENV{PATH_INFO}\E$// if defined $ENV{PATH_INFO};
+#    $uri            =~ s/\Q$path\E$//      if defined $path;      # remove path
 
     if ($full) {
-	my $protocol = $self->protocol();
-	$url = "$protocol://";
-	my $vh = http('x_forwarded_host') || http('host');
-	if ($vh) {
-	    $url .= $vh;
-	} else {
-	    $url .= server_name();
-	    my $port = $self->server_port;
-	    $url .= ":" . $port
-		unless (lc($protocol) eq 'http'  && $port == 80)
-		    || (lc($protocol) eq 'https' && $port == 443);
-	}
+        my $protocol = $self->protocol();
+        $url = "$protocol://";
+        my $vh = http('x_forwarded_host') || http('host') || '';
+            $vh =~ s/\:\d+$//;  # some clients add the port number (incorrectly). Get rid of it.
+
+        $url .= $vh || server_name();
+
+        my $port = $self->virtual_port;
+
+        # add the port to the url unless it's the protocol's default port
+        $url .= ':' . $port unless (lc($protocol) eq 'http'  && $port == 80)
+                                or (lc($protocol) eq 'https' && $port == 443);
+
         return $url if $base;
-	$url .= $uri;
+
+        $url .= $uri;
     } elsif ($relative) {
-	($url) = $script_name =~ m!([^/]+)$!;
+	($url) = $uri =~ m!([^/]+)$!;
     } elsif ($absolute) {
 	$url = $uri;
     }
 
     $url .= $path         if $path_info and defined $path;
     $url .= "?$query_str" if $query     and $query_str ne '';
+    $url ||= '';
     $url =~ s/([^a-zA-Z0-9_.%;&?\/\\:+=~-])/sprintf("%%%02X",ord($1))/eg;
     return $url;
 }
@@ -2678,8 +2899,8 @@ END_OF_FUNC
 'cookie' => <<'END_OF_FUNC',
 sub cookie {
     my($self,@p) = self_or_default(@_);
-    my($name,$value,$path,$domain,$secure,$expires) =
-	rearrange([NAME,[VALUE,VALUES],PATH,DOMAIN,SECURE,EXPIRES],@p);
+    my($name,$value,$path,$domain,$secure,$expires,$httponly) =
+	rearrange([NAME,[VALUE,VALUES],PATH,DOMAIN,SECURE,EXPIRES,HTTPONLY],@p);
 
     require CGI::Cookie;
 
@@ -2687,9 +2908,8 @@ sub cookie {
     # value of the cookie, if any.  For efficiency, we cache the parsed
     # cookies in our state variables.
     unless ( defined($value) ) {
-	$self->{'.cookies'} = CGI::Cookie->fetch
-	    unless $self->{'.cookies'};
-
+	$self->{'.cookies'} = CGI::Cookie->fetch;
+	
 	# If no name is supplied, then retrieve the names of all our cookies.
 	return () unless $self->{'.cookies'};
 	return keys %{$self->{'.cookies'}} unless $name;
@@ -2707,8 +2927,9 @@ sub cookie {
     push(@param,'-path'=>$path) if $path;
     push(@param,'-expires'=>$expires) if $expires;
     push(@param,'-secure'=>$secure) if $secure;
+    push(@param,'-httponly'=>$httponly) if $httponly;
 
-    return new CGI::Cookie(@param);
+    return CGI::Cookie->new(@param);
 }
 END_OF_FUNC
 
@@ -2726,12 +2947,12 @@ END_OF_FUNC
 sub param_fetch {
     my($self,@p) = self_or_default(@_);
     my($name) = rearrange([NAME],@p);
-    unless (exists($self->{$name})) {
+    unless (exists($self->{param}{$name})) {
 	$self->add_parameter($name);
-	$self->{$name} = [];
+	$self->{param}{$name} = [];
     }
     
-    return $self->{$name};
+    return $self->{param}{$name};
 }
 END_OF_FUNC
 
@@ -2752,42 +2973,63 @@ sub path_info {
     } elsif (! defined($self->{'.path_info'}) ) {
         my (undef,$path_info) = $self->_name_and_path_from_env;
 	$self->{'.path_info'} = $path_info || '';
-	# hack to fix broken path info in IIS
-	$self->{'.path_info'} =~ s/^\Q$ENV{'SCRIPT_NAME'}\E// if $IIS;
-
     }
     return $self->{'.path_info'};
 }
 END_OF_FUNC
 
-# WE USE THIS TO COMPENSATE FOR A BUG IN APACHE 2 PRESENT AT LEAST UP THROUGH 2.0.54
+# This function returns a potentially modified version of SCRIPT_NAME
+# and PATH_INFO. Some HTTP servers do sanitise the paths in those
+# variables. It is the case of at least Apache 2. If for instance the
+# user requests: /path/./to/script.cgi/x//y/z/../x?y, Apache will set:
+# REQUEST_URI=/path/./to/script.cgi/x//y/z/../x?y
+# SCRIPT_NAME=/path/to/env.cgi
+# PATH_INFO=/x/y/x
+#
+# This is all fine except that some bogus CGI scripts expect
+# PATH_INFO=/http://foo when the user requests
+# http://xxx/script.cgi/http://foo
+#
+# Old versions of this module used to accomodate with those scripts, so
+# this is why we do this here to keep those scripts backward compatible.
+# Basically, we accomodate with those scripts but within limits, that is
+# we only try to preserve the number of / that were provided by the user
+# if $REQUEST_URI and "$SCRIPT_NAME$PATH_INFO" only differ by the number
+# of consecutive /.
+#
+# So for instance, in: http://foo/x//y/script.cgi/a//b, we'll return a
+# script_name of /x//y/script.cgi and a path_info of /a//b, but in:
+# http://foo/./x//z/script.cgi/a/../b//c, we'll return the versions
+# possibly sanitised by the HTTP server, so in the case of Apache 2:
+# script_name == /foo/x/z/script.cgi and path_info == /b/c.
+#
+# Future versions of this module may no longer do that, so one should
+# avoid relying on the browser, proxy, server, and CGI.pm preserving the
+# number of consecutive slashes as no guarantee can be made there.
 '_name_and_path_from_env' => <<'END_OF_FUNC',
 sub _name_and_path_from_env {
-   my $self = shift;
-   my $raw_script_name = $ENV{SCRIPT_NAME} || '';
-   my $raw_path_info   = $ENV{PATH_INFO}   || '';
-   my $uri             = $ENV{REQUEST_URI} || '';
+    my $self = shift;
+    my $script_name = $ENV{SCRIPT_NAME}  || '';
+    my $path_info   = $ENV{PATH_INFO}    || '';
+    my $uri         = $self->request_uri || '';
 
-   if ($raw_script_name =~ m/$raw_path_info$/) {
-     $raw_script_name =~ s/$raw_path_info$//;
-   }
+    $uri =~ s/\?.*//s;
+    $uri = unescape($uri);
 
-   my @uri_double_slashes  = $uri =~ m^(/{2,}?)^g;
-   my @path_double_slashes = "$raw_script_name $raw_path_info" =~ m^(/{2,}?)^g;
+    if ($uri ne "$script_name$path_info") {
+        my $script_name_pattern = quotemeta($script_name);
+        my $path_info_pattern = quotemeta($path_info);
+        $script_name_pattern =~ s{(?:\\/)+}{/+}g;
+        $path_info_pattern =~ s{(?:\\/)+}{/+}g;
 
-   my $apache_bug      = @uri_double_slashes != @path_double_slashes;
-   return ($raw_script_name,$raw_path_info) unless $apache_bug;
-
-   my $path_info_search = $raw_path_info;
-   # these characters will not (necessarily) be escaped
-   $path_info_search    =~ s/([^a-zA-Z0-9$()':_.,+*\/;?=&-])/uc sprintf("%%%02x",ord($1))/eg;
-   $path_info_search    = quotemeta($path_info_search);
-   $path_info_search    =~ s!/!/+!g;
-   if ($uri =~ m/^(.+)($path_info_search)/) {
-       return ($1,$2);
-   } else {
-       return ($raw_script_name,$raw_path_info);
-   }
+        if ($uri =~ /^($script_name_pattern)($path_info_pattern)$/s) {
+            # REQUEST_URI and SCRIPT_NAME . PATH_INFO only differ by the
+            # numer of consecutive slashes, so we can extract the info from
+            # REQUEST_URI:
+            ($script_name, $path_info) = ($1, $2);
+        }
+    }
+    return ($script_name,$path_info);
 }
 END_OF_FUNC
 
@@ -2797,7 +3039,7 @@ END_OF_FUNC
 ####
 'request_method' => <<'END_OF_FUNC',
 sub request_method {
-    return $ENV{'REQUEST_METHOD'};
+    return (defined $ENV{'REQUEST_METHOD'}) ? $ENV{'REQUEST_METHOD'} : undef;
 }
 END_OF_FUNC
 
@@ -2806,7 +3048,7 @@ END_OF_FUNC
 ####
 'content_type' => <<'END_OF_FUNC',
 sub content_type {
-    return $ENV{'CONTENT_TYPE'};
+    return (defined $ENV{'CONTENT_TYPE'}) ? $ENV{'CONTENT_TYPE'} : undef;
 }
 END_OF_FUNC
 
@@ -2816,7 +3058,7 @@ END_OF_FUNC
 ####
 'path_translated' => <<'END_OF_FUNC',
 sub path_translated {
-    return $ENV{'PATH_TRANSLATED'};
+    return (defined $ENV{'PATH_TRANSLATED'}) ? $ENV{'PATH_TRANSLATED'} : undef;
 }
 END_OF_FUNC
 
@@ -2826,7 +3068,7 @@ END_OF_FUNC
 ####
 'request_uri' => <<'END_OF_FUNC',
 sub request_uri {
-    return $ENV{'REQUEST_URI'};
+    return (defined $ENV{'REQUEST_URI'}) ? $ENV{'REQUEST_URI'} : undef;
 }
 END_OF_FUNC
 
@@ -2839,15 +3081,15 @@ END_OF_FUNC
 sub query_string {
     my($self) = self_or_default(@_);
     my($param,$value,@pairs);
-    foreach $param ($self->param) {
-	my($eparam) = escape($param);
-	foreach $value ($self->param($param)) {
-	    $value = escape($value);
+    for $param ($self->param) {
+       my($eparam) = escape($param);
+       for $value ($self->param($param)) {
+           $value = escape($value);
             next unless defined $value;
-	    push(@pairs,"$eparam=$value");
-	}
+           push(@pairs,"$eparam=$value");
+       }
     }
-    foreach (keys %{$self->{'.fieldnames'}}) {
+    for (keys %{$self->{'.fieldnames'}}) {
       push(@pairs,".cgifields=".escape("$_"));
     }
     return join($USE_PARAM_SEMICOLONS ? ';' : '&',@pairs);
@@ -2871,9 +3113,11 @@ sub Accept {
     my($self,$search) = self_or_CGI(@_);
     my(%prefs,$type,$pref,$pat);
     
-    my(@accept) = split(',',$self->http('accept'));
+    my(@accept) = defined $self->http('accept') 
+                ? split(',',$self->http('accept'))
+                : ();
 
-    foreach (@accept) {
+    for (@accept) {
 	($pref) = /q=(\d\.\d+|\d+)/;
 	($type) = m#(\S+/[^;]+)#;
 	next unless $type;
@@ -2892,7 +3136,7 @@ sub Accept {
     return $prefs{$search} if $prefs{$search};
 
     # Didn't get it, so try pattern matching.
-    foreach (keys %prefs) {
+    for (keys %prefs) {
 	next unless /\*/;       # not a pattern match
 	($pat = $_) =~ s/([^\w*])/\\$1/g; # escape meta characters
 	$pat =~ s/\*/.*/g; # turn it into a pattern
@@ -2910,8 +3154,9 @@ END_OF_FUNC
 'user_agent' => <<'END_OF_FUNC',
 sub user_agent {
     my($self,$match)=self_or_CGI(@_);
-    return $self->http('user_agent') unless $match;
-    return $self->http('user_agent') =~ /$match/i;
+    my $user_agent = $self->http('user_agent');
+    return $user_agent unless $match && $user_agent;
+    return $user_agent =~ /$match/i;
 }
 END_OF_FUNC
 
@@ -2988,7 +3233,7 @@ END_OF_FUNC
 sub script_name {
     my ($self,@p) = self_or_default(@_);
     if (@p) {
-        $self->{'.script_name'} = shift;
+        $self->{'.script_name'} = shift @p;
     } elsif (!exists $self->{'.script_name'}) {
         my ($script_name,$path_info) = $self->_name_and_path_from_env();
         $self->{'.script_name'} = $script_name;
@@ -3069,33 +3314,35 @@ END_OF_FUNC
 'http' => <<'END_OF_FUNC',
 sub http {
     my ($self,$parameter) = self_or_CGI(@_);
-    return $ENV{$parameter} if $parameter=~/^HTTP/;
-    $parameter =~ tr/-/_/;
-    return $ENV{"HTTP_\U$parameter\E"} if $parameter;
-    my(@p);
-    foreach (keys %ENV) {
-	push(@p,$_) if /^HTTP/;
+    if ( defined($parameter) ) {
+        $parameter =~ tr/-a-z/_A-Z/;
+        if ( $parameter =~ /^HTTP(?:_|$)/ ) {
+            return $ENV{$parameter};
+        }
+        return $ENV{"HTTP_$parameter"};
     }
-    return @p;
+    return grep { /^HTTP(?:_|$)/ } keys %ENV;
 }
 END_OF_FUNC
 
 #### Method: https
-# Return the value of HTTPS
+# Return the value of HTTPS, or
+# the value of an HTTPS variable, or
+# the list of variables
 ####
 'https' => <<'END_OF_FUNC',
 sub https {
-    local($^W)=0;
     my ($self,$parameter) = self_or_CGI(@_);
-    return $ENV{HTTPS} unless $parameter;
-    return $ENV{$parameter} if $parameter=~/^HTTPS/;
-    $parameter =~ tr/-/_/;
-    return $ENV{"HTTPS_\U$parameter\E"} if $parameter;
-    my(@p);
-    foreach (keys %ENV) {
-	push(@p,$_) if /^HTTPS/;
+    if ( defined($parameter) ) {
+        $parameter =~ tr/-a-z/_A-Z/;
+        if ( $parameter =~ /^HTTPS(?:_|$)/ ) {
+            return $ENV{$parameter};
+        }
+        return $ENV{"HTTPS_$parameter"};
     }
-    return @p;
+    return wantarray
+        ? grep { /^HTTPS(?:_|$)/ } keys %ENV
+        : $ENV{'HTTPS'};
 }
 END_OF_FUNC
 
@@ -3120,7 +3367,7 @@ END_OF_FUNC
 ####
 'remote_ident' => <<'END_OF_FUNC',
 sub remote_ident {
-    return $ENV{'REMOTE_IDENT'};
+    return (defined $ENV{'REMOTE_IDENT'}) ? $ENV{'REMOTE_IDENT'} : undef;
 }
 END_OF_FUNC
 
@@ -3130,7 +3377,7 @@ END_OF_FUNC
 ####
 'auth_type' => <<'END_OF_FUNC',
 sub auth_type {
-    return $ENV{'AUTH_TYPE'};
+    return (defined $ENV{'AUTH_TYPE'}) ? $ENV{'AUTH_TYPE'} : undef;
 }
 END_OF_FUNC
 
@@ -3141,7 +3388,7 @@ END_OF_FUNC
 ####
 'remote_user' => <<'END_OF_FUNC',
 sub remote_user {
-    return $ENV{'REMOTE_USER'};
+    return (defined $ENV{'REMOTE_USER'}) ? $ENV{'REMOTE_USER'} : undef;
 }
 END_OF_FUNC
 
@@ -3217,6 +3464,17 @@ sub default_dtd {
 END_OF_FUNC
 
 # -------------- really private subroutines -----------------
+'_maybe_escapeHTML' => <<'END_OF_FUNC',
+sub _maybe_escapeHTML {
+    # hack to work around  earlier hacks
+    push @_,$_[0] if @_==1 && $_[0] eq 'CGI';
+    my ($self,$toencode,$newlinestoo) = CGI::self_or_default(@_);
+    return undef unless defined($toencode);
+    return $toencode if ref($self) && !$self->{'escape'};
+    return $self->escapeHTML($toencode, $newlinestoo);
+}
+END_OF_FUNC
+
 'previous_or_default' => <<'END_OF_FUNC',
 sub previous_or_default {
     my($self,$name,$defaults,$override) = @_;
@@ -3224,10 +3482,10 @@ sub previous_or_default {
 
     if (!$override && ($self->{'.fieldnames'}->{$name} || 
 		       defined($self->param($name)) ) ) {
-	grep($selected{$_}++,$self->param($name));
+	$selected{$_}++ for $self->param($name);
     } elsif (defined($defaults) && ref($defaults) && 
 	     (ref($defaults) eq 'ARRAY')) {
-	grep($selected{$_}++,@{$defaults});
+	$selected{$_}++ for @{$defaults};
     } else {
 	$selected{$defaults}++ if defined($defaults);
     }
@@ -3266,7 +3524,7 @@ sub read_from_cmdline {
 	$input = join(" ",@lines);
 	@words = &shellwords($input);    
     }
-    foreach (@words) {
+    for (@words) {
 	s/\\=/%3D/g;
 	s/\\&/%26/g;	    
     }
@@ -3308,11 +3566,20 @@ sub read_multipart {
 	    return;
 	}
 
-	my($param)= $header{'Content-Disposition'}=~/ name="([^;]*)"/;
+	$header{'Content-Disposition'} ||= ''; # quench uninit variable warning
+
+	my($param)= $header{'Content-Disposition'}=~/[\s;]name="([^"]*)"/;
         $param .= $TAINTED;
 
-	# Bug:  Netscape doesn't escape quotation marks in file names!!!
-	my($filename) = $header{'Content-Disposition'}=~/ filename="([^;]*)"/;
+        # See RFC 1867, 2183, 2045
+        # NB: File content will be loaded into memory should
+        # content-disposition parsing fail.
+        my ($filename) = $header{'Content-Disposition'}
+	               =~/ filename=(("[^"]*")|([a-z\d!\#'\*\+,\.^_\`\{\}\|\~]*))/i;
+
+	$filename ||= ''; # quench uninit variable warning
+
+        $filename =~ s/^"([^"]*)"$/$1/;
 	# Test for Opera's multiple upload feature
 	my($multipart) = ( defined( $header{'Content-Type'} ) &&
 		$header{'Content-Type'} =~ /multipart\/mixed/ ) ?
@@ -3326,7 +3593,7 @@ sub read_multipart {
 	if ( ( !defined($filename) || $filename eq '' ) && !$multipart ) {
 	    my($value) = $buffer->readBody;
             $value .= $TAINTED;
-	    push(@{$self->{$param}},$value);
+	    push(@{$self->{param}{$param}},$value);
 	    next;
 	}
 
@@ -3350,7 +3617,7 @@ sub read_multipart {
 	  # choose a relatively unpredictable tmpfile sequence number
           my $seqno = unpack("%16C*",join('',localtime,grep {defined $_} values %ENV));
           for (my $cnt=10;$cnt>0;$cnt--) {
-	    next unless $tmpfile = new CGITempFile($seqno);
+	    next unless $tmpfile = CGITempFile->new($seqno);
 	    $tmp = $tmpfile->as_string;
 	    last if defined($filehandle = Fh->new($filename,$tmp,$PRIVATE_TEMPFILES));
             $seqno += int rand(100);
@@ -3363,7 +3630,7 @@ sub read_multipart {
 	  # together with the body for later parsing with an external
 	  # MIME parser module
 	  if ( $multipart ) {
-	      foreach ( keys %header ) {
+	      for ( keys %header ) {
 		  print $filehandle "$_: $header{$_}${CRLF}";
 	      }
 	      print $filehandle "${CRLF}";
@@ -3371,14 +3638,14 @@ sub read_multipart {
 
 	  my ($data);
 	  local($\) = '';
-          my $totalbytes;
+          my $totalbytes = 0;
           while (defined($data = $buffer->read)) {
               if (defined $self->{'.upload_hook'})
                {
                   $totalbytes += length($data);
                    &{$self->{'.upload_hook'}}($filename ,$data, $totalbytes, $self->{'.upload_data'});
               }
-	      print $filehandle $data;
+              print $filehandle $data if ($self->{'use_tempfile'});
           }
 
 	  # back up to beginning of file
@@ -3402,16 +3669,120 @@ sub read_multipart {
 	      name => $tmpfile,
 	      info => {%header},
 	  };
-	  push(@{$self->{$param}},$filehandle);
+	  push(@{$self->{param}{$param}},$filehandle);
       }
     }
 }
 END_OF_FUNC
 
+#####
+# subroutine: read_multipart_related
+#
+# Read multipart/related data and store it into our parameters.  The
+# first parameter sets the start of the data. The part identified by
+# this Content-ID will not be stored as a file upload, but will be
+# returned by this method.  All other parts will be available as file
+# uploads accessible by their Content-ID
+#####
+'read_multipart_related' => <<'END_OF_FUNC',
+sub read_multipart_related {
+    my($self,$start,$boundary,$length) = @_;
+    my($buffer) = $self->new_MultipartBuffer($boundary,$length);
+    return unless $buffer;
+    my(%header,$body);
+    my $filenumber = 0;
+    my $returnvalue;
+    while (!$buffer->eof) {
+	%header = $buffer->readHeader;
+
+	unless (%header) {
+	    $self->cgi_error("400 Bad request (malformed multipart POST)");
+	    return;
+	}
+
+	my($param) = $header{'Content-ID'}=~/\<([^\>]*)\>/;
+        $param .= $TAINTED;
+
+	# If this is the start part, then just read the data and assign it
+	# to our return variable.
+	if ( $param eq $start ) {
+	    $returnvalue = $buffer->readBody;
+            $returnvalue .= $TAINTED;
+	    next;
+	}
+
+	# add this parameter to our list
+	$self->add_parameter($param);
+
+	my ($tmpfile,$tmp,$filehandle);
+      UPLOADS: {
+	  # If we get here, then we are dealing with a potentially large
+	  # uploaded form.  Save the data to a temporary file, then open
+	  # the file for reading.
+
+	  # skip the file if uploads disabled
+	  if ($DISABLE_UPLOADS) {
+	      while (defined($data = $buffer->read)) { }
+	      last UPLOADS;
+	  }
+
+	  # choose a relatively unpredictable tmpfile sequence number
+          my $seqno = unpack("%16C*",join('',localtime,grep {defined $_} values %ENV));
+          for (my $cnt=10;$cnt>0;$cnt--) {
+	    next unless $tmpfile = CGITempFile->new($seqno);
+	    $tmp = $tmpfile->as_string;
+	    last if defined($filehandle = Fh->new($param,$tmp,$PRIVATE_TEMPFILES));
+            $seqno += int rand(100);
+          }
+          die "CGI open of tmpfile: $!\n" unless defined $filehandle;
+	  $CGI::DefaultClass->binmode($filehandle) if $CGI::needs_binmode 
+                     && defined fileno($filehandle);
+
+	  my ($data);
+	  local($\) = '';
+          my $totalbytes;
+          while (defined($data = $buffer->read)) {
+              if (defined $self->{'.upload_hook'})
+               {
+                  $totalbytes += length($data);
+                   &{$self->{'.upload_hook'}}($param ,$data, $totalbytes, $self->{'.upload_data'});
+              }
+              print $filehandle $data if ($self->{'use_tempfile'});
+          }
+
+	  # back up to beginning of file
+	  seek($filehandle,0,0);
+
+      ## Close the filehandle if requested this allows a multipart MIME
+      ## upload to contain many files, and we won't die due to too many
+      ## open file handles. The user can access the files using the hash
+      ## below.
+      close $filehandle if $CLOSE_UPLOAD_FILES;
+	  $CGI::DefaultClass->binmode($filehandle) if $CGI::needs_binmode;
+
+	  # Save some information about the uploaded file where we can get
+	  # at it later.
+	  # Use the typeglob as the key, as this is guaranteed to be
+	  # unique for each filehandle.  Don't use the file descriptor as
+	  # this will be re-used for each filehandle if the
+	  # close_upload_files feature is used.
+	  $self->{'.tmpfiles'}->{$$filehandle}= {
+              hndl => $filehandle,
+	      name => $tmpfile,
+	      info => {%header},
+	  };
+	  push(@{$self->{param}{$param}},$filehandle);
+      }
+    }
+    return $returnvalue;
+}
+END_OF_FUNC
+
+
 'upload' =><<'END_OF_FUNC',
 sub upload {
     my($self,$param_name) = self_or_default(@_);
-    my @param = grep(ref && fileno($_), $self->param($param_name));
+    my @param = grep {ref($_) && defined(fileno($_))} $self->param($param_name);
     return unless @param;
     return wantarray ? @param : $param[0];
 }
@@ -3452,7 +3823,7 @@ sub _set_attributes {
     my($element, $attributes) = @_;
     return '' unless defined($attributes->{$element});
     $attribs = ' ';
-    foreach my $attrib (keys %{$attributes->{$element}}) {
+    for my $attrib (keys %{$attributes->{$element}}) {
         (my $clean_attrib = $attrib) =~ s/^-//;
         $attribs .= "@{[lc($clean_attrib)]}=\"$attributes->{$element}{$attrib}\" ";
     }
@@ -3463,7 +3834,7 @@ END_OF_FUNC
 
 '_compile_all' => <<'END_OF_FUNC',
 sub _compile_all {
-    foreach (@_) {
+    for (@_) {
 	next if defined(&$_);
 	$AUTOLOAD = "CGI::$_";
 	_compile();
@@ -3481,6 +3852,7 @@ END_OF_AUTOLOAD
 
 ################### Fh -- lightweight filehandle ###############
 package Fh;
+
 use overload 
     '""'  => \&asString,
     'cmp' => \&compare,
@@ -3532,12 +3904,22 @@ sub new {
     (my $safename = $name) =~ s/([':%])/ sprintf '%%%02X', ord $1 /eg;
     my $fv = ++$FH . $safename;
     my $ref = \*{"Fh::$fv"};
-    $file =~ m!^([a-zA-Z0-9_ \'\":/.\$\\-]+)$! || return;
+
+    # Note this same regex is also used elsewhere in the same file for CGITempFile::new
+    $file =~ m!^([a-zA-Z0-9_ \'\":/.\$\\\+-]+)$! || return;
     my $safe = $1;
     sysopen($ref,$safe,Fcntl::O_RDWR()|Fcntl::O_CREAT()|Fcntl::O_EXCL(),0600) || return;
     unlink($safe) if $delete;
     CORE::delete $Fh::{$fv};
     return bless $ref,$pack;
+}
+END_OF_FUNC
+
+'handle' => <<'END_OF_FUNC',
+sub handle {
+  my $self = shift;
+  eval "require IO::Handle" unless IO::Handle->can('new_from_fd');
+  return IO::Handle->new_from_fd(fileno $self,"<");
 }
 END_OF_FUNC
 
@@ -3604,7 +3986,7 @@ sub new {
     }
 
     my $self = {LENGTH=>$length,
-		CHUNKED=>!defined $length,
+		CHUNKED=>!$length,
 		BOUNDARY=>$boundary,
 		INTERFACE=>$interface,
 		BUFFER=>'',
@@ -3822,6 +4204,15 @@ sub find_tempdir {
 	   "${vol}${SL}Temporary Items",
            "${SL}WWW_ROOT", "${SL}SYS\$SCRATCH",
 	   "C:${SL}system${SL}temp");
+    
+    if( $CGI::OS eq 'WINDOWS' ){
+         # PeterH: These evars may not exist if this is invoked within a service and untainting
+         # is in effect - with 'use warnings' the undefined array entries causes Perl to die
+         unshift(@TEMP,$ENV{TEMP}) if defined $ENV{TEMP};
+         unshift(@TEMP,$ENV{TMP}) if defined $ENV{TMP};
+         unshift(@TEMP,$ENV{WINDIR} . $SL . 'TEMP') if defined $ENV{WINDIR};
+    }
+
     unshift(@TEMP,$ENV{'TMPDIR'}) if defined $ENV{'TMPDIR'};
 
     # this feature was supposed to provide per-user tmpfiles, but
@@ -3833,7 +4224,7 @@ sub find_tempdir {
     #    : Refer to getpwuid() only at run-time if we're fortunate and have  UNIX.
     # unshift(@TEMP,(eval {(getpwuid($>))[7]}).'/tmp') if $CGI::OS eq 'UNIX' and $> != 0;
 
-    foreach (@TEMP) {
+    for (@TEMP) {
       do {$TMPDIRECTORY = $_; last} if -d $_ && -w _;
     }
   }
@@ -3850,7 +4241,7 @@ $MAXTRIES = 5000;
 
 sub DESTROY {
     my($self) = @_;
-    $$self =~ m!^([a-zA-Z0-9_ \'\":/.\$\\-]+)$! || return;
+    $$self =~ m!^([a-zA-Z0-9_ \'\":/.\$\\~-]+)$! || return;
     my $safe = $1;             # untaint operation
     unlink $safe;              # get rid of the file
 }
@@ -3868,10 +4259,11 @@ sub new {
     my $filename;
     find_tempdir() unless -w $TMPDIRECTORY;
     for (my $i = 0; $i < $MAXTRIES; $i++) {
-	last if ! -f ($filename = sprintf("${TMPDIRECTORY}${SL}CGItemp%d",$sequence++));
+	last if ! -f ($filename = sprintf("\%s${SL}CGItemp%d", $TMPDIRECTORY, $sequence++));
     }
     # check that it is a more-or-less valid filename
-    return unless $filename =~ m!^([a-zA-Z0-9_ \'\":/.\$\\-]+)$!;
+    # Note this same regex is also used elsewhere in the same file for Fh::new
+    return unless $filename =~ m!^([a-zA-Z0-9_ \'\":/.\$\\\+-]+)$!;
     # this used to untaint, now it doesn't
     # $filename = $1;
     return bless \$filename;
@@ -3911,63 +4303,51 @@ __END__
 
 =head1 NAME
 
-CGI - Simple Common Gateway Interface Class
+CGI - Handle Common Gateway Interface requests and responses
 
 =head1 SYNOPSIS
 
-  # CGI script that creates a fill-out form
-  # and echoes back its values.
+    use CGI;
 
-  use CGI qw/:standard/;
-  print header,
-        start_html('A Simple Example'),
-        h1('A Simple Example'),
-        start_form,
-        "What's your name? ",textfield('name'),p,
-        "What's the combination?", p,
-        checkbox_group(-name=>'words',
-		       -values=>['eenie','meenie','minie','moe'],
-		       -defaults=>['eenie','minie']), p,
-        "What's your favorite color? ",
-        popup_menu(-name=>'color',
-	           -values=>['red','green','blue','chartreuse']),p,
-        submit,
-        end_form,
-        hr;
+    my $q = CGI->new;
 
-   if (param()) {
-       my $name      = param('name');
-       my $keywords  = join ', ',param('words');
-       my $color     = param('color');
-       print "Your name is",em(escapeHTML($name)),p,
-	     "The keywords are: ",em(escapeHTML($keywords)),p,
-	     "Your favorite color is ",em(escapeHTML($color)),
-	     hr;
-   }
+    # Process an HTTP request
+     @values  = $q->param('form_field');
 
-=head1 ABSTRACT
+     $fh      = $q->upload('file_field');
 
-This perl library uses perl5 objects to make it easy to create Web
-fill-out forms and parse their contents.  This package defines CGI
-objects, entities that contain the values of the current query string
-and other state variables.  Using a CGI object's methods, you can
-examine keywords and parameters passed to your script, and create
-forms whose initial values are taken from the current query (thereby
-preserving state information).  The module provides shortcut functions
-that produce boilerplate HTML, reducing typing and coding errors. It
-also provides functionality for some of the more advanced features of
-CGI scripting, including support for file uploads, cookies, cascading
-style sheets, server push, and frames.
+     $riddle  = $query->cookie('riddle_name');
+     %answers = $query->cookie('answers');
 
-CGI.pm also provides a simple function-oriented programming style for
-those who don't need its object-oriented features.
+    # Prepare various HTTP responses
+    print $q->header();
+    print $q->header('application/json');
 
-The current version of CGI.pm is available at
+	$cookie1 = $q->cookie(-name=>'riddle_name', -value=>"The Sphynx's Question");
+	$cookie2 = $q->cookie(-name=>'answers', -value=>\%answers);
+    print $q->header(
+        -type    => 'image/gif',
+        -expires => '+3d',
+        -cookie  => [$cookie1,$cookie2]
+        );
 
-  http://www.genome.wi.mit.edu/ftp/pub/software/WWW/cgi_docs.html
-  ftp://ftp-genome.wi.mit.edu/pub/software/WWW/
+   print  $q->redirect('http://somewhere.else/in/movie/land');
 
 =head1 DESCRIPTION
+
+CGI.pm is a stable, complete and mature solution for processing and preparing
+HTTP requests and responses.  Major features including processing form
+submissions, file uploads, reading and writing cookies, query string generation
+and manipulation, and processing and preparing HTTP headers. Some HTML
+generation utilities are included as well.
+
+CGI.pm performs very well in in a vanilla CGI.pm environment and also comes
+with built-in support for mod_perl and mod_perl2 as well as FastCGI.
+
+It has the benefit of having developed and refined over 10 years with input
+from dozens of contributors and being deployed on thousands of websites.
+CGI.pm has been included in the Perl distribution since Perl 5.4, and has
+become a de-facto standard.
 
 =head2 PROGRAMMING STYLE
 
@@ -3987,7 +4367,7 @@ a simple "Hello World" HTML page:
 
    #!/usr/local/bin/perl -w
    use CGI;                             # load CGI routines
-   $q = new CGI;                        # create new CGI object
+   $q = CGI->new;                        # create new CGI object
    print $q->header,                    # create the HTTP header
          $q->start_html('hello world'), # start the HTML
          $q->h1('hello world'),         # level 1 header
@@ -4126,14 +4506,17 @@ HTML "standards".
 
 =head2 CREATING A NEW QUERY OBJECT (OBJECT-ORIENTED STYLE):
 
-     $query = new CGI;
+     $query = CGI->new;
 
 This will parse the input (from both POST and GET methods) and store
-it into a perl5 object called $query.  
+it into a perl5 object called $query. 
+
+Any filehandles from file uploads will have their position reset to 
+the beginning of the file. 
 
 =head2 CREATING A NEW QUERY OBJECT FROM AN INPUT FILE
 
-     $query = new CGI(INPUTFILE);
+     $query = CGI->new(INPUTFILE);
 
 If you provide a file handle to the new() method, it will read
 parameters from the file (or STDIN, or whatever).  The file can be in
@@ -4146,7 +4529,7 @@ Perl purists will be pleased to know that this syntax accepts
 references to file handles, or even references to filehandle globs,
 which is the "official" way to pass a filehandle:
 
-    $query = new CGI(\*STDIN);
+    $query = CGI->new(\*STDIN);
 
 You can also initialize the CGI object with a FileHandle or IO::File
 object.
@@ -4160,32 +4543,32 @@ default CGI object from the indicated file handle.
     restore_parameters(IN);
     close IN;
 
-You can also initialize the query object from an associative array
+You can also initialize the query object from a hash
 reference:
 
-    $query = new CGI( {'dinosaur'=>'barney',
+    $query = CGI->new( {'dinosaur'=>'barney',
 		       'song'=>'I love you',
 		       'friends'=>[qw/Jessica George Nancy/]}
 		    );
 
 or from a properly formatted, URL-escaped query string:
 
-    $query = new CGI('dinosaur=barney&color=purple');
+    $query = CGI->new('dinosaur=barney&color=purple');
 
 or from a previously existing CGI object (currently this clones the
 parameter list, but none of the other object-specific fields, such as
 autoescaping):
 
-    $old_query = new CGI;
-    $new_query = new CGI($old_query);
+    $old_query = CGI->new;
+    $new_query = CGI->new($old_query);
 
 To create an empty query, initialize it from an empty string or hash:
 
-   $empty_query = new CGI("");
+   $empty_query = CGI->new("");
 
        -or-
 
-   $empty_query = new CGI({});
+   $empty_query = CGI->new({});
 
 =head2 FETCHING A LIST OF KEYWORDS FROM THE QUERY:
 
@@ -4225,8 +4608,7 @@ selections in a scrolling list), you can ask to receive an array.  Otherwise
 the method will return a single value.
 
 If a value is not given in the query string, as in the queries
-"name1=&name2=" or "name1&name2", it will be returned as an empty
-string.  This feature is new in 2.63.
+"name1=&name2=", it will be returned as an empty string.
 
 
 If the parameter does not exist at all, then param() will return undef
@@ -4310,6 +4692,10 @@ it, use code like this:
 
    my $data = $query->param('POSTDATA');
 
+Likewise if PUTed data can be retrieved with code like this:
+
+   my $data = $query->param('PUTDATA');
+
 (If you don't know what the preceding means, don't worry about it.  It
 only affects people trying to use CGI for XML processing and other
 specialized tasks.)
@@ -4385,19 +4771,19 @@ a short example of creating multiple session records:
 
    use CGI;
 
-   open (OUT,">>test.out") || die;
+   open (OUT,'>>','test.out') || die;
    $records = 5;
-   foreach (0..$records) {
-       my $q = new CGI;
+   for (0..$records) {
+       my $q = CGI->new;
        $q->param(-name=>'counter',-value=>$_);
        $q->save(\*OUT);
    }
    close OUT;
 
    # reopen for reading
-   open (IN,"test.out") || die;
+   open (IN,'<','test.out') || die;
    while (!eof(IN)) {
-       my $q = new CGI(\*IN);
+       my $q = CGI->new(\*IN);
        print $q->param('counter'),"\n";
    }
 
@@ -4486,12 +4872,11 @@ Import all methods that generate HTML 4 elements (such as
 
 =item B<:netscape>
 
-Import all methods that generate Netscape-specific HTML extensions.
+Import the <blink>, <fontsize> and <center> tags. 
 
 =item B<:html>
 
-Import all HTML-generating shortcuts (i.e. 'html2' + 'html3' +
-'netscape')...
+Import all HTML-generating shortcuts (i.e. 'html2', 'html3', 'html4' and 'netscape')
 
 =item B<:standard>
 
@@ -4574,11 +4959,11 @@ The current list of pragmas is as follows:
 
 When you I<use CGI -any>, then any method that the query object
 doesn't recognize will be interpreted as a new HTML tag.  This allows
-you to support the next I<ad hoc> Netscape or Microsoft HTML
+you to support the next I<ad hoc> HTML
 extension.  This lets you go wild with new and unsupported tags:
 
    use CGI qw(-any);
-   $q=new CGI;
+   $q=CGI->new;
    print $q->gradient({speed=>'fast',start=>'red',end=>'blue'});
 
 Since using <cite>any</cite> causes any mistyped method name
@@ -4590,7 +4975,7 @@ all.
 This causes the indicated autoloaded methods to be compiled up front,
 rather than deferred to later.  This is useful for scripts that run
 for an extended period of time under FastCGI or mod_perl, and for
-those destined to be crunched by Malcom Beattie's Perl compiler.  Use
+those destined to be crunched by Malcolm Beattie's Perl compiler.  Use
 it in conjunction with the methods or method families you plan to use.
 
    use CGI qw(-compile :standard :html3);
@@ -4641,9 +5026,20 @@ By default, CGI.pm versions 2.69 and higher emit XHTML
 feature.  Thanks to Michalis Kabrianis <kabrianis@hellug.gr> for this
 feature.
 
-If start_html()'s -dtd parameter specifies an HTML 2.0 or 3.2 DTD, 
+If start_html()'s -dtd parameter specifies an HTML 2.0, 
+3.2, 4.0 or 4.01 DTD, 
 XHTML will automatically be disabled without needing to use this 
 pragma.
+
+=item -utf8
+
+This makes CGI.pm treat all parameters as UTF-8 strings. Use this with
+care, as it will interfere with the processing of binary uploads. It
+is better to manually select which fields are expected to return utf-8
+strings and convert them using code like this:
+
+ use Encode;
+ my $arg = decode utf8=>param('foo');
 
 =item -nph
 
@@ -4659,11 +5055,9 @@ semicolons rather than ampersands.  For example:
 
    ?name=fred;age=24;favorite_color=3
 
-Semicolon-delimited query strings are always accepted, but will not be
-emitted by self_url() and query_string() unless the -newstyle_urls
-pragma is specified.
-
-This became the default in version 2.64.
+Semicolon-delimited query strings are always accepted, and will be emitted by
+self_url() and query_string(). newstyle_urls became the default in version
+2.64.
 
 =item -oldstyle_urls
 
@@ -4854,7 +5248,7 @@ indicated expiration date.  The following forms are all valid for the
 
 The B<-cookie> parameter generates a header that tells the browser to provide
 a "magic cookie" during all subsequent transactions with your script.
-Netscape cookies have a special format that includes interesting attributes
+Some cookies have a special format that includes interesting attributes
 such as expiration time.  Use the cookie() method to create and retrieve
 session cookies.
 
@@ -4883,15 +5277,27 @@ In either case, the outgoing header will be formatted as:
 
   P3P: policyref="/w3c/p3p.xml" cp="CAO DSP LAW CURa"
 
+Note that if a header value contains a carriage return, a leading space will be
+added to each new line that doesn't already have one as specified by RFC2616
+section 4.2.  For example:
+
+    print header( -ingredients => "ham\neggs\nbacon" );
+
+will generate
+
+    Ingredients: ham
+     eggs
+     bacon
+
 =head2 GENERATING A REDIRECTION HEADER
 
-   print redirect('http://somewhere.else/in/movie/land');
+   print $q->redirect('http://somewhere.else/in/movie/land');
 
 Sometimes you don't want to produce a document yourself, but simply
 redirect the browser elsewhere, perhaps choosing a URL based on the
 time of day or the identity of the user.  
 
-The redirect() function redirects the browser to a different URL.  If
+The redirect() method redirects the browser to a different URL.  If
 you use redirection like this, you should B<not> print out a header as
 well.
 
@@ -4900,9 +5306,14 @@ redirection requests.  Relative URLs will not work correctly.
 
 You can also use named arguments:
 
-    print redirect(-uri=>'http://somewhere.else/in/movie/land',
-			   -nph=>1,
-                           -status=>301);
+    print $q->redirect(
+        -uri=>'http://somewhere.else/in/movie/land',
+	    -nph=>1,
+         -status=>301);
+
+All names arguments recognized by header() are also recognized by
+redirect(). However, most HTTP headers, including those generated by
+-cookie and -target, are ignored by the browser.
 
 The B<-nph> parameter, if set to a true value, will issue the correct
 headers to work with a NPH (no-parse-header) script.  This is important
@@ -4941,7 +5352,7 @@ This method returns a canned HTML header and the opening <body> tag.
 All parameters are optional.  In the named parameter form, recognized
 parameters are -title, -author, -base, -xbase, -dtd, -lang and -target
 (see below for the explanation).  Any additional parameters you
-provide, such as the Netscape unofficial BGCOLOR attribute, are added
+provide, such as the unofficial BGCOLOR attribute, are added
 to the <body> tag.  Additional parameters must be proceeded by a
 hyphen.
 
@@ -4954,15 +5365,13 @@ All relative links will be interpreted relative to this tag.
 
 The argument B<-target> allows you to provide a default target frame
 for all the links and fill-out forms on the page.  B<This is a
-non-standard HTTP feature which only works with Netscape browsers!>
-See the Netscape documentation on frames for details of how to
-manipulate this.
+non-standard HTTP feature which only works with some browsers!>
 
     -target=>"answer_window"
 
 All relative links will be interpreted relative to this tag.
 You add arbitrary meta information to the header with the B<-meta>
-argument.  This argument expects a reference to an associative array
+argument.  This argument expects a reference to a hash
 containing name/value pairs of meta information.  These will be turned
 into a series of header <meta> tags that look something like this:
 
@@ -5022,7 +5431,7 @@ And here's how to create an HTTP-EQUIV <meta> tag:
 
 JAVASCRIPTING: The B<-script>, B<-noScript>, B<-onLoad>,
 B<-onMouseOver>, B<-onMouseOut> and B<-onUnload> parameters are used
-to add Netscape JavaScript calls to your pages.  B<-script> should
+to add JavaScript calls to your pages.  B<-script> should
 point to a block of text containing JavaScript function definitions.
 This block will be placed within a <script> block inside the HTML (not
 HTTP) header.  The block is placed in the header in order to give your
@@ -5038,7 +5447,7 @@ code to execute when the page is respectively opened and closed by the
 browser.  Usually these parameters are calls to functions defined in the
 B<-script> field:
 
-      $query = new CGI;
+      $query = CGI->new;
       print header;
       $JSCRIPT=<<END;
       // Ask a silly question
@@ -5063,20 +5472,20 @@ Use the B<-noScript> parameter to pass some HTML text that will be displayed on
 browsers that do not have JavaScript (or browsers where JavaScript is turned
 off).
 
-Netscape 3.0 recognizes several attributes of the <script> tag,
-including LANGUAGE and SRC.  The latter is particularly interesting,
-as it allows you to keep the JavaScript code in a file or CGI script
-rather than cluttering up each page with the source.  To use these
-attributes pass a HASH reference in the B<-script> parameter containing
-one or more of -language, -src, or -code:
+The <script> tag, has several attributes including "type" and src.
+The latter is particularly interesting, as it allows you to keep the
+JavaScript code in a file or CGI script rather than cluttering up each
+page with the source.  To use these attributes pass a HASH reference
+in the B<-script> parameter containing one or more of -type, -src, or
+-code:
 
     print $q->start_html(-title=>'The Riddle of the Sphinx',
-			 -script=>{-language=>'JAVASCRIPT',
+			 -script=>{-type=>'JAVASCRIPT',
                                    -src=>'/javascript/sphinx.js'}
 			 );
 
     print $q->(-title=>'The Riddle of the Sphinx',
-	       -script=>{-language=>'PERLSCRIPT',
+	       -script=>{-type=>'PERLSCRIPT',
 			 -code=>'print "hello world!\n;"'}
 	       );
 
@@ -5084,32 +5493,27 @@ one or more of -language, -src, or -code:
 A final feature allows you to incorporate multiple <script> sections into the
 header.  Just pass the list of script sections as an array reference.
 this allows you to specify different source files for different dialects
-of JavaScript.  Example:     
+of JavaScript.  Example:
 
      print $q->start_html(-title=>'The Riddle of the Sphinx',
                           -script=>[
-                                    { -language => 'JavaScript1.0',
+                                    { -type => 'text/javascript',
                                       -src      => '/javascript/utilities10.js'
                                     },
-                                    { -language => 'JavaScript1.1',
+                                    { -type => 'text/javascript',
                                       -src      => '/javascript/utilities11.js'
                                     },
-                                    { -language => 'JavaScript1.2',
+                                    { -type => 'text/jscript',
                                       -src      => '/javascript/utilities12.js'
                                     },
-                                    { -language => 'JavaScript28.2',
+                                    { -type => 'text/ecmascript',
                                       -src      => '/javascript/utilities219.js'
                                     }
                                  ]
                              );
 
-If this looks a bit extreme, take my advice and stick with straight CGI scripting.  
-
-See
-
-   http://home.netscape.com/eng/mozilla/2.0/handbook/javascript/
-
-for more information about JavaScript.
+The option "-language" is a synonym for -type, and is supported for
+backwad compatibility.
 
 The old-style positional parameters are as follows:
 
@@ -5134,7 +5538,7 @@ but makes the document hierarchy non-portable.  Use with care!
 =item 4, 5, 6...
 
 Any other parameters you want to include in the <body> tag.  This is a good
-place to put Netscape extensions, such as colors and wallpaper patterns.
+place to put HTML extensions, such as colors and wallpaper patterns.
 
 =back
 
@@ -5226,7 +5630,7 @@ Generate just the protocol and net location, as in http://www.foo.com:8000
 If Apache's mod_rewrite is turned on, then the script name and path
 info probably won't match the request that the user sent. Set
 -rewrite=>1 (default) to return URLs that match what the user sent
-(the original request URI). Set -rewrite->0 to return URLs that match
+(the original request URI). Set -rewrite=>0 to return URLs that match
 the URL after mod_rewrite's rules have run. Because the additional
 path information only makes sense in the context of the rewritten URL,
 -rewrite is set to false when you request path info in the URL.
@@ -5306,8 +5710,8 @@ together with spaces and placed between opening and closing tags:
 
    print h1("Chapter","1"); # <h1>Chapter 1</h1>"
 
-If the first argument is an associative array reference, then the keys
-and values of the associative array become the HTML tag's attributes:
+If the first argument is a hash reference, then the keys
+and values of the hash become the HTML tag's attributes:
 
    print a({-href=>'fred.html',-target=>'_new'},
       "Open a new frame");
@@ -5361,7 +5765,7 @@ This is extremely useful for creating tables.  For example:
 
    print table({-border=>undef},
            caption('When Should You Eat Your Vegetables?'),
-           Tr({-align=>CENTER,-valign=>TOP},
+           Tr({-align=>'CENTER',-valign=>'TOP'},
            [
               th(['Vegetable', 'Breakfast','Lunch','Dinner']),
               td(['Tomatoes' , 'no', 'yes', 'yes']),
@@ -5446,6 +5850,13 @@ passing a -charset argument to header(), then B<all> characters will
 be replaced by their numeric entities, since CGI.pm has no lookup
 table for all the possible encodings.
 
+C<escapeHTML()> expects the supplied string to be a character string. This means you
+should Encode::decode data received from "outside" and Encode::encode your
+strings before sending them back outside. If your source code UTF-8 encoded and
+you want to upgrade string literals in your source to character strings, you
+can use "use utf8". See L<perlunitut>, L<perlunifaq> and L<perlunicode> for more
+information on how Perl handles the difference between bytes and characters.
+
 The automatic escaping does not apply to other shortcuts, such as
 h1().  You should call escapeHTML() yourself on untrusted data in
 order to protect your pages against nasty tricks that people may enter
@@ -5506,8 +5917,12 @@ your ability to incorporate special HTML character sequences, such as &Aacute;,
 into your fields.  If you wish to turn off automatic escaping, call the
 autoEscape() method with a false value immediately after creating the CGI object:
 
-   $query = new CGI;
-   autoEscape(undef);
+   $query = CGI->new;
+   $query->autoEscape(0);
+
+Note that autoEscape() is exclusively used to effect the behavior of how some
+CGI.pm HTML generation fuctions handle escaping. Calling escapeHTML()
+explicitly will always escape the HTML.
 
 I<A Lurking Trap!> Some of the form-element generating methods return
 multiple tags.  In a scalar context, the tags will be concatenated
@@ -5542,46 +5957,47 @@ default is to process the query with the current script.
 		    -action=>$action,
 		    -enctype=>$encoding);
       <... various form stuff ...>
-    print endform;
+    print end_form;
 
 	-or-
 
     print start_form($method,$action,$encoding);
       <... various form stuff ...>
-    print endform;
+    print end_form;
 
 start_form() will return a <form> tag with the optional method,
 action and form encoding that you specify.  The defaults are:
 
     method: POST
     action: this script
-    enctype: application/x-www-form-urlencoded
+    enctype: application/x-www-form-urlencoded for non-XHTML
+             multipart/form-data for XHTML, see mulitpart/form-data below.
 
-endform() returns the closing </form> tag.  
+end_form() returns the closing </form> tag.  
 
 Start_form()'s enctype argument tells the browser how to package the various
 fields of the form before sending the form to the server.  Two
 values are possible:
 
-B<Note:> This method was previously named startform(), and startform()
-is still recognized as an alias.
+B<Note:> These methods were previously named startform() and endform().
+These methods are now DEPRECATED.
+Please use start_form() and end_form() instead.
 
 =over 4
 
 =item B<application/x-www-form-urlencoded>
 
-This is the older type of encoding used by all browsers prior to
-Netscape 2.0.  It is compatible with many CGI scripts and is
+This is the older type of encoding.  It is compatible with many CGI scripts and is
 suitable for short fields containing text data.  For your
 convenience, CGI.pm stores the name of this encoding
 type in B<&CGI::URL_ENCODED>.
 
 =item B<multipart/form-data>
 
-This is the newer type of encoding introduced by Netscape 2.0.
+This is the newer type of encoding.
 It is suitable for forms that contain very large fields or that
 are intended for transferring binary data.  Most importantly,
-it enables the "file upload" feature of Netscape 2.0 forms.  For
+it enables the "file upload" feature.  For
 your convenience, CGI.pm stores the name of this encoding type
 in B<&CGI::MULTIPART>
 
@@ -5594,10 +6010,11 @@ created using this type of encoding.
 
 =back
 
-For compatibility, the start_form() method uses the older form of
-encoding by default.  If you want to use the newer form of encoding
-by default, you can call B<start_multipart_form()> instead of
-B<start_form()>.
+The start_form() method uses the older form of encoding by
+default unless XHTML is requested.  If you want to use the
+newer form of encoding by default, you can call
+B<start_multipart_form()> instead of B<start_form()>.  The
+method B<end_multipart_form()> is an alias to B<end_form()>.
 
 JAVASCRIPTING: The B<-name> and B<-onSubmit> parameters are provided
 for use with JavaScript.  The -name parameter gives the
@@ -5650,7 +6067,7 @@ JavaScript and DHTML.
 
 A boolean, which, if true, forces the element to take on the value
 specified by B<-value>, overriding the sticky behavior described
-earlier for the B<-no_sticky> pragma.
+earlier for the B<-nosticky> pragma.
 
 =item B<-onChange>, B<-onFocus>, B<-onBlur>, B<-onMouseOver>, B<-onMouseOut>, B<-onSelect>
 
@@ -5751,7 +6168,7 @@ will be starred out on the web page.
 
     print filefield('uploaded_file','starting value',50,80);
 
-filefield() will return a file upload field for Netscape 2.0 browsers.
+filefield() will return a file upload field.
 In order to take full advantage of this I<you must use the new 
 multipart encoding scheme> for the form.  You can do this either
 by calling B<start_form()> with an encoding type of B<&CGI::MULTIPART>,
@@ -5789,10 +6206,37 @@ field will accept (-maxlength).
 
 =back
 
-When the form is processed, you can retrieve the entered filename
-by calling param():
+JAVASCRIPTING: The B<-onChange>, B<-onFocus>, B<-onBlur>,
+B<-onMouseOver>, B<-onMouseOut> and B<-onSelect> parameters are
+recognized.  See textfield() for details.
 
-       $filename = param('uploaded_file');
+=head2 PROCESSING A FILE UPLOAD FIELD
+
+=head3 Basics
+
+When the form is processed, you can retrieve an L<IO::Handle> compatibile
+handle for a file upload field like this:
+
+  $lightweight_fh  = $q->upload('field_name');
+
+  # undef may be returned if it's not a valid file handle
+  if (defined $lightweight_fh) {
+    # Upgrade the handle to one compatible with IO::Handle:
+    my $io_handle = $lightweight_fh->handle;
+
+    open (OUTFILE,'>>','/usr/local/web/users/feedback');
+    while ($bytesread = $io_handle->read($buffer,1024)) {
+      print OUTFILE $buffer;
+    }
+  }
+
+In a list context, upload() will return an array of filehandles.
+This makes it possible to process forms that use the same name for
+multiple upload fields.
+
+If you want the entered file name for the file, you can just call param():
+
+  $filename = $q->param('field_name');
 
 Different browsers will return slightly different things for the
 name.  Some browsers return the filename only.  Others return the full
@@ -5801,60 +6245,40 @@ Regardless, the name returned is always the name of the file on the
 I<user's> machine, and is unrelated to the name of the temporary file
 that CGI.pm creates during upload spooling (see below).
 
-The filename returned is also a file handle.  You can read the contents
-of the file using standard Perl file reading calls:
-
-	# Read a text file and print it out
-	while (<$filename>) {
-	   print;
-	}
-
-	# Copy a binary file to somewhere safe
-	open (OUTFILE,">>/usr/local/web/users/feedback");
-	while ($bytesread=read($filename,$buffer,1024)) {
-	   print OUTFILE $buffer;
-	}
-
-However, there are problems with the dual nature of the upload fields.
-If you C<use strict>, then Perl will complain when you try to use a
-string as a filehandle.  You can get around this by placing the file
-reading code in a block containing the C<no strict> pragma.  More
-seriously, it is possible for the remote user to type garbage into the
-upload field, in which case what you get from param() is not a
-filehandle at all, but a string.
-
-To be safe, use the I<upload()> function (new in version 2.47).  When
-called with the name of an upload field, I<upload()> returns a
-filehandle, or undef if the parameter is not a valid filehandle.
-
-     $fh = upload('uploaded_file');
-     while (<$fh>) {
-	   print;
-     }
-
-In an list context, upload() will return an array of filehandles.
-This makes it possible to create forms that use the same name for
-multiple upload fields.
-
-This is the recommended idiom.
-
 When a file is uploaded the browser usually sends along some
 information along with it in the format of headers.  The information
-usually includes the MIME content type.  Future browsers may send
-other information as well (such as modification date and size). To
+usually includes the MIME content type. To
 retrieve this information, call uploadInfo().  It returns a reference to
-an associative array containing all the document headers.
+a hash containing all the document headers.
 
-       $filename = param('uploaded_file');
-       $type = uploadInfo($filename)->{'Content-Type'};
+       $filename = $q->param('uploaded_file');
+       $type = $q->uploadInfo($filename)->{'Content-Type'};
        unless ($type eq 'text/html') {
-	  die "HTML FILES ONLY!";
+        die "HTML FILES ONLY!";
        }
 
 If you are using a machine that recognizes "text" and "binary" data
 modes, be sure to understand when and how to use them (see the Camel book).  
 Otherwise you may find that binary files are corrupted during file
 uploads.
+
+=head3 Accessing the temp files directly
+
+When processing an uploaded file, CGI.pm creates a temporary file on your hard
+disk and passes you a file handle to that file. After you are finished with the
+file handle, CGI.pm unlinks (deletes) the temporary file. If you need to you
+can access the temporary file directly. You can access the temp file for a file
+upload by passing the file name to the tmpFileName() method:
+
+       $filename = $query->param('uploaded_file');
+       $tmpfilename = $query->tmpFileName($filename);
+
+The temporary file will be deleted automatically when your program exits unless
+you manually rename it. On some operating systems (such as Windows NT), you
+will need to close the temporary file's filehandle before your program exits.
+Otherwise the attempt to delete the temporary file will fail.
+
+=head3 Handling interrupted file uploads
 
 There are occasionally problems involving parsing the uploaded file.
 This usually happens when the user presses "Stop" before the upload is
@@ -5864,36 +6288,51 @@ uploaded file and set I<cgi_error()> to the string "400 Bad request
 you can incorporate it into a status code to be sent to the browser.
 Example:
 
-   $file = upload('uploaded_file');
-   if (!$file && cgi_error) {
-      print header(-status=>cgi_error);
+   $file = $q->upload('uploaded_file');
+   if (!$file && $q->cgi_error) {
+      print $q->header(-status=>$q->cgi_error);
       exit 0;
    }
 
 You are free to create a custom HTML page to complain about the error,
 if you wish.
 
-You can set up a callback that will be called whenever a file upload
-is being read during the form processing. This is much like the
-UPLOAD_HOOK facility available in Apache::Request, with the exception
-that the first argument to the callback is an Apache::Upload object,
-here it's the remote filename.
+=head3 Progress bars for file uploads and avoiding temp files
 
- $q = CGI->new(\&hook,$data);
+CGI.pm gives you low-level access to file upload management through
+a file upload hook. You can use this feature to completely turn off
+the temp file storage of file uploads, or potentially write your own
+file upload progess meter.
 
- sub hook
- {
+This is much like the UPLOAD_HOOK facility available in L<Apache::Request>, with
+the exception that the first argument to the callback is an L<Apache::Upload>
+object, here it's the remote filename.
+
+ $q = CGI->new(\&hook [,$data [,$use_tempfile]]);
+
+ sub hook {
         my ($filename, $buffer, $bytes_read, $data) = @_;
-        print  "Read $bytes_read bytes of $filename\n";         
+        print  "Read $bytes_read bytes of $filename\n";
  }
+
+The C<< $data >> field is optional; it lets you pass configuration
+information (e.g. a database handle) to your hook callback.
+
+The C<< $use_tempfile >> field is a flag that lets you turn on and off
+CGI.pm's use of a temporary disk-based file during file upload. If you
+set this to a FALSE value (default true) then $q->param('uploaded_file')
+will no longer work, and the only way to get at the uploaded data is
+via the hook you provide.
 
 If using the function-oriented interface, call the CGI::upload_hook()
 method before calling param() or any other CGI functions:
 
-  CGI::upload_hook(\&hook,$data);
+  CGI::upload_hook(\&hook [,$data [,$use_tempfile]]);
 
 This method is not exported by default.  You will have to import it
 explicitly if you wish to use it without the CGI:: prefix.
+
+=head3 Troubleshooting file uploads on Windows
 
 If you are using CGI.pm on a Windows platform and find that binary
 files get slightly larger when uploaded but that text files remain the
@@ -5901,9 +6340,26 @@ same, then you have forgotten to activate binary mode on the output
 filehandle.  Be sure to call binmode() on any handle that you create
 to write the uploaded file to disk.
 
-JAVASCRIPTING: The B<-onChange>, B<-onFocus>, B<-onBlur>,
-B<-onMouseOver>, B<-onMouseOut> and B<-onSelect> parameters are
-recognized.  See textfield() for details.
+=head3 Older ways to process file uploads
+
+( This section is here for completeness. if you are building a new application with CGI.pm, you can skip it. )
+
+The original way to process file uploads with CGI.pm was to use param(). The
+value it returns has a dual nature as both a file name and a lightweight
+filehandle. This dual nature is problematic if you following the recommended
+practice of having C<use strict> in your code. Perl will complain when you try
+to use a string as a filehandle.  More seriously, it is possible for the remote
+user to type garbage into the upload field, in which case what you get from
+param() is not a filehandle at all, but a string.
+
+To solve this problem the upload() method was added, which always returns a
+lightweight filehandle. This generally works well, but will have trouble
+interoperating with some other modules because the file handle is not derived
+from L<IO::Handle>. So that brings us to current recommedation given above,
+which is to call the handle() method on the file handle returned by upload().
+That upgrades the handle to an IO::Handle. It's a big win for compatibility for
+a small penalty of loading IO::Handle the first time you call it.
+
 
 =head2 CREATING A POPUP MENU
 
@@ -5925,7 +6381,7 @@ recognized.  See textfield() for details.
 
    print popup_menu(-name=>'menu_name',
 			    -values=>['eenie','meenie','minie'],
-			    -default=>'meenie',
+			    -default=>['meenie','minie'],
           -labels=>\%labels,
           -attributes=>\%attributes);
 
@@ -5948,14 +6404,15 @@ a named array, such as "\@foo".
 
 The optional third parameter (-default) is the name of the default
 menu choice.  If not specified, the first item will be the default.
-The values of the previous choice will be maintained across queries.
+The values of the previous choice will be maintained across
+queries. Pass an array reference to select multiple defaults.
 
 =item 4.
 
 The optional fourth parameter (-labels) is provided for people who
 want to use different values for the user-visible label inside the
 popup menu and the value returned to your script.  It's a pointer to an
-associative array relating menu values to user-visible labels.  If you
+hash relating menu values to user-visible labels.  If you
 leave this parameter blank, the menu values will be displayed by
 default.  (You can also leave a label undefined if you want to).
 
@@ -5963,8 +6420,8 @@ default.  (You can also leave a label undefined if you want to).
 
 The optional fifth parameter (-attributes) is provided to assign
 any of the common HTML attributes to an individual menu item. It's
-a pointer to an associative array relating menu values to another
-associative array with the attribute's name as the key and the
+a pointer to a hash relating menu values to another
+hash with the attribute's name as the key and the
 attribute's value as the value.
 
 =back
@@ -6016,7 +6473,7 @@ used for the menu labels (see -labels below).
 =item 3.
 
 The optional third parameter (B<-labels>) allows you to pass a reference
-to an associative array containing user-visible labels for one or more
+to a hash containing user-visible labels for one or more
 of the menu items.  You can use this when you want the user to see one
 menu string, but have the browser return your program a different one.
 If you don't specify this, the value string will be used instead
@@ -6032,7 +6489,7 @@ for each option element within the optgroup.
 =item 5.
 
 An optional fifth parameter (-novals) can be set to a true value and
-indicates to suppress the val attribut in each option element within
+indicates to suppress the val attribute in each option element within
 the optgroup.
 
 See the discussion on optgroup at W3C
@@ -6043,8 +6500,8 @@ for details.
 
 An optional sixth parameter (-attributes) is provided to assign
 any of the common HTML attributes to an individual menu item. It's
-a pointer to an associative array relating menu values to another
-associative array with the attribute's name as the key and the
+a pointer to a hash relating menu values to another
+hash with the attribute's name as the key and the
 attribute's value as the value.
 
 =back
@@ -6104,7 +6561,7 @@ will be allowed at a time.
 
 =item 5.
 
-The optional sixth argument is a pointer to an associative array
+The optional sixth argument is a pointer to a hash
 containing long user-visible labels for the list items (-labels).
 If not provided, the values will be displayed.
 
@@ -6112,8 +6569,8 @@ If not provided, the values will be displayed.
 
 The optional sixth parameter (-attributes) is provided to assign
 any of the common HTML attributes to an individual menu item. It's
-a pointer to an associative array relating menu values to another
-associative array with the attribute's name as the key and the
+a pointer to a hash relating menu values to another
+hash with the attribute's name as the key and the
 attribute's value as the value.
 
 When this form is processed, all selected list items will be returned as
@@ -6130,6 +6587,7 @@ selected items can be retrieved with:
 				-values=>['eenie','meenie','minie','moe'],
 				-default=>['eenie','moe'],
 				-linebreak=>'true',
+                                -disabled => ['moe'],
         -labels=>\%labels,
         -attributes=>\%attributes);
 
@@ -6176,23 +6634,24 @@ list.  Otherwise, they will be strung together on a horizontal line.
 =back
 
 
-The optional b<-labels> argument is a pointer to an associative array
+The optional B<-labels> argument is a pointer to a hash
 relating the checkbox values to the user-visible labels that will be
 printed next to them.  If not provided, the values will be used as the
 default.
 
 
-Modern browsers can take advantage of the optional parameters
-B<-rows>, and B<-columns>.  These parameters cause checkbox_group() to
-return an HTML3 compatible table containing the checkbox group
-formatted with the specified number of rows and columns.  You can
-provide just the -columns parameter if you wish; checkbox_group will
-calculate the correct number of rows for you.
+The optional parameters B<-rows>, and B<-columns> cause
+checkbox_group() to return an HTML3 compatible table containing the
+checkbox group formatted with the specified number of rows and
+columns.  You can provide just the -columns parameter if you wish;
+checkbox_group will calculate the correct number of rows for you.
 
+The option B<-disabled> takes an array of checkbox values and disables
+them by greying them out (this may not be supported by all browsers).
 
 The optional B<-attributes> argument is provided to assign any of the
 common HTML attributes to an individual menu item. It's a pointer to
-an associative array relating menu values to another associative array
+a hash relating menu values to another hash
 with the attribute's name as the key and the attribute's value as the
 value.
 
@@ -6209,6 +6668,9 @@ are the tab indexes of each button.  Examples:
   -tabindex => 100    #  this group starts at index 100 and counts up
   -tabindex => ['moe','minie','eenie','meenie']  # tab in this order
   -tabindex => {meenie=>100,moe=>101,minie=>102,eenie=>200} # tab in this order
+
+The optional B<-labelattributes> argument will contain attributes
+attached to the <label> element that surrounds each button.
 
 When the form is processed, all checked boxes will be returned as
 a list under the parameter name 'group_name'.  The values of the
@@ -6340,7 +6802,7 @@ the -columns parameter if you wish; radio_group will calculate the
 correct number of rows for you.
 
 To include row and column headings in the returned table, you
-can use the B<-rowheader> and B<-colheader> parameters.  Both
+can use the B<-rowheaders> and B<-colheaders> parameters.  Both
 of these accept a pointer to an array of headings to use.
 The headings are just decorative.  They don't reorganize the
 interpretation of the radio buttons -- they're still a single named
@@ -6363,9 +6825,12 @@ are the tab indexes of each button.  Examples:
 
 The optional B<-attributes> argument is provided to assign any of the
 common HTML attributes to an individual menu item. It's a pointer to
-an associative array relating menu values to another associative array
+a hash relating menu values to another hash
 with the attribute's name as the key and the attribute's value as the
 value.
+
+The optional B<-labelattributes> argument will contain attributes
+attached to the <label> element that surrounds each button.
 
 When the form is processed, the selected radio button can
 be retrieved using:
@@ -6526,20 +6991,17 @@ Fetch the value of the button this way:
 
 	-or-
 
-     print button('button_name',"do_something()");
+     print button('button_name',"user visible value","do_something()");
 
-button() produces a button that is compatible with Netscape 2.0's
-JavaScript.  When it's pressed the fragment of JavaScript code
-pointed to by the B<-onClick> parameter will be executed.  On
-non-Netscape browsers this form element will probably not even
-display.
+button() produces an C<< <input> >> tag with C<type="button">.  When it's
+pressed the fragment of JavaScript code pointed to by the B<-onClick> parameter
+will be executed.
 
 =head1 HTTP COOKIES
 
-Netscape browsers versions 1.1 and higher, and all versions of
-Internet Explorer, support a so-called "cookie" designed to help
-maintain state within a browser session.  CGI.pm has several methods
-that support cookies.
+Browsers support a so-called "cookie" designed to help maintain state
+within a browser session.  CGI.pm has several methods that support
+cookies.
 
 A cookie is a name=value pair much like the named parameters in a CGI
 query string.  CGI scripts create one or more cookies and send
@@ -6614,8 +7076,8 @@ and unescaping cookies behind the scenes.
 =item B<-value>
 
 The value of the cookie.  This can be any scalar value,
-array reference, or even associative array reference.  For example,
-you can store an entire associative array into a cookie this way:
+array reference, or even hash reference.  For example,
+you can store an entire hash into a cookie this way:
 
 	$cookie=cookie(-name=>'family information',
 			       -value=>\%childrens_ages);
@@ -6647,6 +7109,7 @@ SSL session.
 The cookie created by cookie() must be incorporated into the HTTP
 header within the string returned by the header() method:
 
+        use CGI ':standard';
 	print header(-cookie=>$my_cookie);
 
 To create multiple cookies, give header() an array reference:
@@ -6658,12 +7121,13 @@ To create multiple cookies, give header() an array reference:
 	print header(-cookie=>[$cookie1,$cookie2]);
 
 To retrieve a cookie, request it by name by calling cookie() method
-without the B<-value> parameter:
+without the B<-value> parameter. This example uses the object-oriented
+form:
 
 	use CGI;
-	$query = new CGI;
-	$riddle = cookie('riddle_name');
-        %answers = cookie('answers');
+	$query = CGI->new;
+	$riddle = $query->cookie('riddle_name');
+        %answers = $query->cookie('answers');
 
 Cookies created with a single scalar value, such as the "riddle_name"
 cookie, will be returned in that form.  Cookies with array and hash
@@ -6678,6 +7142,11 @@ simple to turn a CGI parameter into a cookie, and vice-versa:
    $c=cookie(-name=>'answers',-value=>[param('answers')]);
    # vice-versa
    param(-name=>'answers',-value=>[cookie('answers')]);
+
+If you call cookie() without any parameters, it will return a list of
+the names of all cookies passed to your script:
+
+  @cookies = cookie();
 
 See the B<cookie.cgi> example script for some ideas on how to use
 cookies effectively.
@@ -6698,10 +7167,7 @@ document that defines the frames on the page.  Specify your script(s)
 (with appropriate parameters) as the SRC for each of the frames.
 
 There is no specific support for creating <frameset> sections 
-in CGI.pm, but the HTML is very simple to write.  See the frame
-documentation in Netscape's home pages for details 
-
-  http://home.netscape.com/assist/net_sites/frames.html
+in CGI.pm, but the HTML is very simple to write.  
 
 =item 2. Specify the destination for the document in the HTTP header
 
@@ -6713,8 +7179,7 @@ This will tell the browser to load the output of your script into the
 frame named "ResultsWindow".  If a frame of that name doesn't already
 exist, the browser will pop up a new window and load your script's
 document into that.  There are a number of magic names that you can
-use for targets.  See the frame documents on Netscape's home pages for
-details.
+use for targets.  See the HTML C<< <frame> >> documentation for details.
 
 =item 3. Specify the destination for the document in the <form> tag
 
@@ -6734,19 +7199,6 @@ create pages in which the fill-out form and the response live in
 side-by-side frames.
 
 =head1 SUPPORT FOR JAVASCRIPT
-
-Netscape versions 2.0 and higher incorporate an interpreted language
-called JavaScript. Internet Explorer, 3.0 and higher, supports a
-closely-related dialect called JScript. JavaScript isn't the same as
-Java, and certainly isn't at all the same as Perl, which is a great
-pity. JavaScript allows you to programatically change the contents of
-fill-out forms, create new windows, and pop up dialog box from within
-Netscape itself. From the point of view of CGI scripting, JavaScript
-is quite useful for validating fill-out forms prior to submitting
-them.
-
-You'll need to know JavaScript in order to use it. There are many good
-sources in bookstores and on the web.
 
 The usual way to use JavaScript is to define a set of functions in a
 <SCRIPT> block inside the HTML header and then to register event
@@ -6876,7 +7328,7 @@ start_html() method provides a convenient way to create this section.
 Similarly, you can create a form that checks itself over for
 consistency and alerts the user if some essential value is missing by
 creating it this way: 
-  print startform(-onSubmit=>"validateMe(this)");
+  print start_form(-onSubmit=>"validateMe(this)");
 
 See the javascript.cgi script for a demonstration of how this all
 works.
@@ -6919,7 +7371,7 @@ section of text:
 Note that you must import the ":html3" definitions to have the
 B<span()> method available.  Here's a quick and dirty example of using
 CSS's.  See the CSS specification at
-http://www.w3.org/pub/WWW/TR/Wd-css-1.html for more information.
+http://www.w3.org/Style/CSS/ for more information.
 
     use CGI qw/:standard :html3/;
 
@@ -6960,10 +7412,8 @@ Should you wish to incorporate a verbatim stylesheet that includes
 arbitrary formatting in the header, you may pass a -verbatim tag to
 the -style hash, as follows:
 
-print start_html (-STYLE  =>  {-verbatim => '@import
-url("/server-common/css/'.$cssFile.'");',
-                      -src      =>  '/server-common/css/core.css'});
-</blockquote></pre>
+print start_html (-style  =>  {-verbatim => '@import url("/server-common/css/'.$cssFile.'");',
+                  -src    =>  '/server-common/css/core.css'});
 
 
 This will generate an HTML header that contains this:
@@ -6992,6 +7442,14 @@ and pass it to start_html() in the -head argument, as in:
   @h = (Link({-rel=>'stylesheet',-type=>'text/css',-src=>'/ss/ss.css',-media=>'all'}),
         Link({-rel=>'stylesheet',-type=>'text/css',-src=>'/ss/fred.css',-media=>'paper'}));
   print start_html({-head=>\@h})
+
+To create primary and  "alternate" stylesheet, use the B<-alternate> option:
+
+ start_html(-style=>{-src=>[
+                           {-src=>'/styles/print.css'},
+			   {-src=>'/styles/alt.css',-alternate=>1}
+                           ]
+		    });
 
 =head1 DEBUGGING
 
@@ -7059,7 +7517,7 @@ Produces something that looks like:
 As a shortcut, you can interpolate the entire CGI object into a string
 and it will be replaced with the a nice HTML dump shown above:
 
-    $query=new CGI;
+    $query=CGI->new;
     print "<h2>Current Values</h2> $query\n";
 
 =head1 FETCHING ENVIRONMENT VARIABLES
@@ -7083,11 +7541,9 @@ order to avoid conflict with Perl's accept() function.
 
 =item B<raw_cookie()>
 
-Returns the HTTP_COOKIE variable, an HTTP extension implemented by
-Netscape browsers version 1.1 and higher, and all versions of Internet
-Explorer.  Cookies have a special format, and this method call just
-returns the raw form (?cookie dough).  See cookie() for ways of
-setting and retrieving cooked cookies.
+Returns the HTTP_COOKIE variable.  Cookies have a special format, and
+this method call just returns the raw form (?cookie dough).  See
+cookie() for ways of setting and retrieving cooked cookies.
 
 Called with no parameters, raw_cookie() returns the packed cookie
 structure.  You can separate it into individual cookies by splitting
@@ -7101,7 +7557,7 @@ method from the CGI::Cookie module.
 Returns the HTTP_USER_AGENT variable.  If you give
 this method a single argument, it will attempt to
 pattern match on it, allowing you to do something
-like user_agent(netscape);
+like user_agent(Mozilla);
 
 =item B<path_info()>
 
@@ -7131,6 +7587,11 @@ path as well.
 
 Returns either the remote host name or IP address.
 if the former is unavailable.
+
+=item B<remote_addr()>
+
+Returns the remote host IP address, or 
+127.0.0.1 if the address is unavailable.
 
 =item B<script_name()>
 Return the script name as a partial URL, for self-refering
@@ -7240,9 +7701,9 @@ running under IIS and put itself into this mode.  You do not need to
 do this manually, although it won't hurt anything if you do.  However,
 note that if you have applied Service Pack 6, much of the
 functionality of NPH scripts, including the ability to redirect while
-setting a cookie, b<do not work at all> on IIS without a special patch
+setting a cookie, B<do not work at all> on IIS without a special patch
 from Microsoft.  See
-http://support.microsoft.com/support/kb/articles/Q280/3/41.ASP:
+http://web.archive.org/web/20010812012030/http://support.microsoft.com/support/kb/articles/Q280/3/41.ASP
 Non-Parsed Headers Stripped From CGI Applications That Have nph-
 Prefix in Name.
 
@@ -7284,7 +7745,7 @@ Here is a simple script that demonstrates server push:
   use CGI qw/:push -nph/;
   $| = 1;
   print multipart_init(-boundary=>'----here we go!');
-  foreach (0 .. 4) {
+  for (0 .. 4) {
       print multipart_start(-type=>'text/plain'),
             "The current time is ",scalar(localtime),"\n";
       if ($_ < 4) {
@@ -7339,9 +7800,6 @@ multipart_end() at the end of the last part of the multipart document.
 
 Users interested in server push applications should also have a look
 at the CGI::Push module.
-
-Only Netscape Navigator supports server push.  Internet Explorer
-browsers do not.
 
 =head1 Avoiding Denial of Service Attacks
 
@@ -7466,10 +7924,8 @@ of CGI.pm without rewriting your old scripts from scratch.
 
 =head1 AUTHOR INFORMATION
 
-Copyright 1995-1998, Lincoln D. Stein.  All rights reserved.  
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
+The CGI.pm distribution is copyright 1995-2007, Lincoln D. Stein.  It is
+distributed under GPL and the Artistic License 2.0.
 
 Address bug reports and comments to: lstein@cshl.org.  When sending
 bug reports, please provide the version of CGI.pm, the version of
@@ -7587,18 +8043,17 @@ for suggestions and bug fixes.
 	   print "<p>",reset;
 	   print submit('Action','Shout');
 	   print submit('Action','Scream');
-	   print endform;
+	   print end_form;
 	   print "<hr>\n";
 	}
 
 	sub do_work {
-	   my(@values,$key);
 
 	   print "<h2>Here are the current settings in this form</h2>";
 
-	   foreach $key (param) {
+	   for my $key (param) {
 	      print "<strong>$key</strong> -> ";
-	      @values = param($key);
+	      my @values = param($key);
 	      print join(", ",@values),"<br>\n";
 	  }
 	}
@@ -7617,7 +8072,11 @@ Please report them.
 
 =head1 SEE ALSO
 
-L<CGI::Carp>, L<CGI::Fast>, L<CGI::Pretty>
+L<CGI::Carp> - provides a L<Carp> implementation tailored to the CGI environment.
+
+L<CGI::Fast> - supports running CGI applications under FastCGI
+
+L<CGI::Pretty> - pretty prints HTML generated by CGI.pm (with a performance penalty)
 
 =cut
 

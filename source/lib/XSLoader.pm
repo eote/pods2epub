@@ -2,7 +2,7 @@
 
 package XSLoader;
 
-$VERSION = "0.06";
+$VERSION = "0.10";
 
 #use strict;
 
@@ -27,8 +27,8 @@ sub load {
     my($module) = $_[0];
 
     # work with static linking too
-    my $b = "$module\::bootstrap";
-    goto &$b if defined &$b;
+    my $boots = "$module\::bootstrap";
+    goto &$boots if defined &$boots;
 
     goto retry unless $module and defined &dl_load_file;
 
@@ -46,6 +46,12 @@ sub load {
     my $bs = $file;
     $bs =~ s/(\.\w+)?(;\d*)?$/\.bs/; # look for .bs 'beside' the library
 
+    if (-s $bs) { # only read file if it's not empty
+#       print STDERR "BS: $bs ($^O, $dlsrc)\n" if $dl_debug;
+        eval { do $bs; };
+        warn "$bs: $@\n" if $@;
+    }
+
     goto retry if not -f $file or -s $bs;
 
     my $bootname = "boot_$module";
@@ -53,12 +59,6 @@ sub load {
     @DynaLoader::dl_require_symbols = ($bootname);
 
     my $boot_symbol_ref;
-
-    if ($^O eq 'darwin') {
-        if ($boot_symbol_ref = dl_find_symbol(0, $bootname)) {
-            goto boot; #extension library has already been loaded, e.g. darwin
-        }
-    }
 
     # Many dynamic extension loading problems will appear to come from
     # this section of code: XYZ failed at line 123 of DynaLoader.pm.
@@ -87,7 +87,7 @@ sub load {
     push(@DynaLoader::dl_modules, $module); # record loaded module
 
   boot:
-    my $xs = dl_install_xsub("${module}::bootstrap", $boot_symbol_ref, $file);
+    my $xs = dl_install_xsub($boots, $boot_symbol_ref, $file);
 
     # See comment block above
     push(@DynaLoader::dl_shared_objects, $file); # record files loaded
@@ -122,7 +122,7 @@ XSLoader - Dynamically load C libraries into Perl code
 
 =head1 VERSION
 
-Version 0.06
+Version 0.10
 
 =head1 SYNOPSIS
 
@@ -290,24 +290,24 @@ this:
 
 =head1 DIAGNOSTICS
 
-=over 4
+=over
 
-=item Can't find '%s' symbol in %s
+=item C<Can't find '%s' symbol in %s>
 
 B<(F)> The bootstrap symbol could not be found in the extension module.
 
-=item Can't load '%s' for module %s: %s
+=item C<Can't load '%s' for module %s: %s>
 
 B<(F)> The loading or initialisation of the extension module failed.
 The detailed error follows.
 
-=item Undefined symbols present after loading %s: %s
+=item C<Undefined symbols present after loading %s: %s>
 
 B<(W)> As the message says, some symbols stay undefined although the
 extension module was correctly loaded and initialised. The list of undefined
 symbols follows.
 
-=item XSLoader::load('Your::Module', $Your::Module::VERSION)
+=item C<XSLoader::load('Your::Module', $Your::Module::VERSION)>
 
 B<(F)> You tried to invoke C<load()> without any argument. You must supply
 a module name, and optionally its version.
@@ -343,12 +343,14 @@ L<DynaLoader>
 Ilya Zakharevich originally extracted C<XSLoader> from C<DynaLoader>.
 
 CPAN version is currently maintained by SE<eacute>bastien Aperghis-Tramoni
-E<lt>sebastien@aperghis.netE<gt>
+E<lt>sebastien@aperghis.netE<gt>.
 
-Previous maintainer was Michael G Schwern <schwern@pobox.com>
+Previous maintainer was Michael G Schwern <schwern@pobox.com>.
 
 
-=head1 COPYRIGHT
+=head1 COPYRIGHT & LICENSE
+
+Copyright (C) 1990-2007 by Larry Wall and others.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

@@ -1,14 +1,16 @@
 package Encode::JP;
 BEGIN {
-    if (ord("A") == 193) {
-	die "Encode::JP not supported on EBCDIC\n";
+    if ( ord("A") == 193 ) {
+        die "Encode::JP not supported on EBCDIC\n";
     }
 }
+use strict;
+use warnings;
 use Encode;
-our $VERSION = do { my @r = (q$Revision: 2.1 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+our $VERSION = do { my @r = ( q$Revision: 2.4 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r };
 
 use XSLoader;
-XSLoader::load(__PACKAGE__,$VERSION);
+XSLoader::load( __PACKAGE__, $VERSION );
 
 use Encode::JP::JIS7;
 
@@ -34,16 +36,16 @@ supported are as follows.
   --------------------------------------------------------------------
   euc-jp      /\beuc.*jp$/i	EUC (Extended Unix Character)
               /\bjp.*euc/i   
-	      /\bujis$/i
+          /\bujis$/i
   shiftjis    /\bshift.*jis$/i	Shift JIS (aka MS Kanji)
-	      /\bsjis$/i
+          /\bsjis$/i
   7bit-jis    /\bjis$/i		7bit JIS
   iso-2022-jp			ISO-2022-JP                  [RFC1468]
-				= 7bit JIS with all Halfwidth Kana 
-				  converted to Fullwidth
+                = 7bit JIS with all Halfwidth Kana 
+                  converted to Fullwidth
   iso-2022-jp-1			ISO-2022-JP-1                [RFC2237]
                                 = ISO-2022-JP with JIS X 0212-1990
-				  support.  See below
+                  support.  See below
   MacJapanese	                Shift JIS + Apple vendor mappings
   cp932       /\bwindows-31j$/i Code Page 932
                                 = Shift JIS + MS/IBM vendor mappings
@@ -84,11 +86,7 @@ in order to preserve text layout as much as possible.
 =head1 BUGS
 
 The ASCII region (0x00-0x7f) is preserved for all encodings, even
-though this conflicts with mappings by the Unicode Consortium.  See
-
-L<http://www.debian.or.jp/~kubota/unicode-symbols.html.en>
-
-to find out why it is implemented that way.
+though this conflicts with mappings by the Unicode Consortium.
 
 =head1 SEE ALSO
 

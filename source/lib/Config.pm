@@ -40,11 +40,11 @@ sub import {
     return;
 }
 
-die "Perl lib version (v5.8.8) doesn't match executable version ($])"
+die "Perl lib version (v5.8.9) doesn't match executable version ($])"
     unless $^V;
 
-$^V eq v5.8.8
-    or die "Perl lib version (v5.8.8) doesn't match executable version (" .
+$^V eq v5.8.9
+    or die "Perl lib version (v5.8.9) doesn't match executable version (" .
 	sprintf("v%vd",$^V) . ")";
 
 
@@ -90,6 +90,6 @@ tie %Config, 'Config', {
     sitearchexp => 'C:\\strawberry\\perl\\site\\lib',
     sitelibexp => 'C:\\strawberry\\perl\\site\\lib',
     useithreads => 'define',
-    usevendorprefix => undef,
-    version => '5.8.8',
+    usevendorprefix => 'define',
+    version => '5.8.9',
 };

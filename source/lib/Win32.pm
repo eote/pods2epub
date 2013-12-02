@@ -2,13 +2,15 @@ package Win32;
 
 BEGIN {
     use strict;
-    use vars qw|$VERSION @ISA @EXPORT @EXPORT_OK|;
+    use vars qw|$VERSION $XS_VERSION @ISA @EXPORT @EXPORT_OK|;
 
     require Exporter;
     require DynaLoader;
 
     @ISA = qw|Exporter DynaLoader|;
-    $VERSION = '0.2601';
+    $VERSION = '0.39';
+    $XS_VERSION = $VERSION;
+    $VERSION = eval $VERSION;
 
     @EXPORT = qw(
 	NULL
@@ -78,20 +80,6 @@ BEGIN {
         CSIDL_CDBURN_AREA
     );
 }
-
-# Routines available in core:
-# Win32::GetLastError
-# Win32::LoginName
-# Win32::NodeName
-# Win32::DomainName
-# Win32::FsType
-# Win32::GetCwd
-# Win32::GetOSVersion
-# Win32::FormatMessage ERRORCODE
-# Win32::Spawn COMMAND, ARGS, PID
-# Win32::GetTickCount
-# Win32::IsWinNT
-# Win32::IsWin95
 
 # We won't bother with the constant stuff, too much of a hassle.  Just hard
 # code it here.
@@ -169,88 +157,66 @@ sub CSIDL_CDBURN_AREA          ()       { 0x003B }     # <user name>\Local Setti
 ### This method is just a simple interface into GetOSVersion().  More
 ### specific or demanding situations should use that instead.
 
-my ($found_os, $found_desc);
+my ($cached_os, $cached_desc);
 
 sub GetOSName {
-    my ($os,$desc,$major, $minor, $build, $id)=("","");
-    unless (defined $found_os) {
-        # If we have a run this already, we have the results cached
-        # If so, return them
-
-        # Use the standard API call to determine the version
-        ($desc, $major, $minor, $build, $id) = Win32::GetOSVersion();
-
-        # If id==0 then its a win32s box -- Meaning Win3.11
-        unless($id) {
-            $os = 'Win32s';
-        }
-	else {
-	    # Magic numbers from MSDN documentation of OSVERSIONINFO
-	    # Most version names can be parsed from just the id and minor
-	    # version
-	    $os = {
-		1 => {
-		    0  => "95",
-		    10 => "98",
-		    90 => "Me"
-		},
-		2 => {
-		    0  => "NT4",
-		    1  => "XP/.Net",
-		    2  => "2003",
-		    51 => "NT3.51"
-		}
-	    }->{$id}->{$minor};
-	}
-
-        # This _really_ shouldnt happen.  At least not for quite a while
-        # Politely warn and return undef
-        unless (defined $os) {
-            warn qq[Windows version [$id:$major:$minor] unknown!];
-            return undef;
-        }
-
-        my $tag = "";
-
-        # But distinguising W2k and Vista from NT4 requires looking at the major version
-        if ($os eq "NT4") {
-	    $os = {5 => "2000", 6 => "Vista"}->{$major} || "NT4";
-        }
-
-        # For the rest we take a look at the build numbers and try to deduce
-	# the exact release name, but we put that in the $desc
-        elsif ($os eq "95") {
-            if ($build eq '67109814') {
-                    $tag = '(a)';
-            }
-	    elsif ($build eq '67306684') {
-                    $tag = '(b1)';
-            }
-	    elsif ($build eq '67109975') {
-                    $tag = '(b2)';
-            }
-        }
-	elsif ($os eq "98" && $build eq '67766446') {
-            $tag = '(2nd ed)';
-        }
-
-	if (length $tag) {
-	    if (length $desc) {
-	        $desc = "$tag $desc";
-	    }
-	    else {
-	        $desc = $tag;
-	    }
-	}
-
-        # cache the results, so we dont have to do this again
-        $found_os      = "Win$os";
-        $found_desc    = $desc;
+    unless (defined $cached_os) {
+	my($desc, $major, $minor, $build, $id, undef, undef, undef, $producttype)
+	    = Win32::GetOSVersion();
+	($cached_os, $cached_desc) = _GetOSName($desc, $major, $minor, $build, $id, $producttype);
     }
-
-    return wantarray ? ($found_os, $found_desc) : $found_os;
+    return wantarray ? ($cached_os, $cached_desc) : $cached_os;
 }
 
+sub _GetOSName {
+    my($desc, $major, $minor, $build, $id, $producttype) = @_;
+
+    my($os,$tag);
+    if ($id == 0) {
+	$os = "Win32s";
+    }
+    elsif ($id == 1) {
+	$os = { 0 => "95", 10 => "98", 90 => "Me" }->{$minor};
+    }
+    elsif ($id == 2) {
+	if ($major == 3) {
+	    $os = "NT3.51";
+	}
+	elsif ($major == 4) {
+	    $os = "NT4";
+	}
+	elsif ($major == 5) {
+	    $os = { 0 => "2000", 1 => "XP/.Net", 2 => "2003" }->{$minor};
+	}
+	elsif ($major == 6) {
+	    $os = { 0 => "Vista", 1 => "7" }->{$minor};
+	    # 2008 is same as Vista but has "Domaincontroller" or "Server" type
+	    $os = "2008" if $os eq "Vista" && $producttype != 1;
+	}
+    }
+
+    unless (defined $os) {
+	warn "Unknown Windows version [$id:$major:$minor]";
+	return;
+    }
+
+    # Take a look at the build numbers and try to deduce
+    # the exact release name, but we put that in the $desc
+    if ($os eq "95") {
+	$tag = { 67109814 => "(a)", 67306684 => "(b1)", "67109975" => "(b2)" }->{$build};
+    }
+    elsif ($os eq "98" && $build eq "67766446") {
+	$tag = "(2nd ed)";
+    }
+    if ($tag) {
+	$desc = length($desc) ? "$tag $desc" : $tag;
+    }
+
+     return ("Win$os", $desc);
+}
+
+# "no warnings 'redefine';" doesn't work for 5.8.7 and earlier
+local $^W = 0;
 bootstrap Win32;
 
 1;
@@ -263,22 +229,25 @@ Win32 - Interfaces to some Win32 API Functions
 
 =head1 DESCRIPTION
 
-Perl on Win32 contains several functions to access Win32 APIs.  Some
-are included in Perl itself (on Win32) and some are only available
-after explicitly requesting the Win32 module with:
-
-	use Win32;
-
-The builtin functions are marked as [CORE] and the other ones
-as [EXT] in the following alphabetical listing.
+The Win32 module contains functions to access Win32 APIs.
 
 =head2 Alphabetical Listing of Win32 Functions
+
+It is recommended to C<use Win32;> before any of these functions;
+however, for backwards compatibility, those marked as [CORE] will
+automatically do this for you.
+
+In the function descriptions below the term I<Unicode string> is used
+to indicate that the string may contain characters outside the system
+codepage.  The caveat I<If supported by the core Perl version>
+generally means Perl 5.8.9 and later, though some Unicode pathname
+functionality may work on earlier versions.
 
 =over
 
 =item Win32::AbortSystemShutdown(MACHINE)
 
-[EXT] Aborts a system shutdown (started by the
+Aborts a system shutdown (started by the
 InitiateSystemShutdown function) on the specified MACHINE.
 
 =item Win32::BuildNumber()
@@ -296,15 +265,35 @@ overwritten when the OVERWRITE parameter is true.  But even this will
 not overwrite a read-only file; you have to unlink() it first
 yourself.
 
+=item Win32::CreateDirectory(DIRECTORY)
+
+Creates the DIRECTORY and returns a true value on success.  Check $^E
+on failure for extended error information.
+
+DIRECTORY may contain Unicode characters outside the system codepage.
+Once the directory has been created you can use
+Win32::GetANSIPathName() to get a name that can be passed to system
+calls and external programs.
+
+=item Win32::CreateFile(FILE)
+
+Creates the FILE and returns a true value on success.  Check $^E on
+failure for extended error information.
+
+FILE may contain Unicode characters outside the system codepage.  Once
+the file has been created you can use Win32::GetANSIPathName() to get
+a name that can be passed to system calls and external programs.
+
 =item Win32::DomainName()
 
-[CORE] Returns the name of the Microsoft Network domain that the
-owner of the current perl process is logged into.  This function does
-B<not> work on Windows 9x.
+[CORE] Returns the name of the Microsoft Network domain or workgroup
+that the owner of the current perl process is logged into.  The
+"Workstation" service must be running to determine this
+information.  This function does B<not> work on Windows 9x.
 
 =item Win32::ExpandEnvironmentStrings(STRING)
 
-[EXT] Takes STRING and replaces all referenced environment variable
+Takes STRING and replaces all referenced environment variable
 names with their defined values.  References to environment variables
 take the form C<%VariableName%>.  Case is ignored when looking up the
 VariableName in the environment.  If the variable is not found then the
@@ -312,6 +301,10 @@ original C<%VariableName%> text is retained.  Has the same effect
 as the following:
 
 	$string =~ s/%([^%]*)%/$ENV{$1} || "%$1%"/eg
+
+However, this function may return a Unicode string if the environment
+variable being expanded hasn't been assigned to via %ENV.  Access
+to %ENV is currently always using byte semantics.
 
 =item Win32::FormatMessage(ERRORCODE)
 
@@ -348,18 +341,32 @@ between two backslashes) on this file system.
 
 =item Win32::FreeLibrary(HANDLE)
 
-[EXT] Unloads a previously loaded dynamic-link library.  The HANDLE is
+Unloads a previously loaded dynamic-link library.  The HANDLE is
 no longer valid after this call.  See L<LoadLibrary|Win32::LoadLibrary(LIBNAME)>
 for information on dynamically loading a library.
 
+=item Win32::GetANSIPathName(FILENAME)
+
+Returns an ANSI version of FILENAME.  This may be the short name
+if the long name cannot be represented in the system codepage.
+
+While not currently implemented, it is possible that in the future
+this function will convert only parts of the path to FILENAME to a
+short form.
+
+If FILENAME doesn't exist on the filesystem, or if the filesystem
+doesn't support short ANSI filenames, then this function will
+translate the Unicode name into the system codepage using replacement
+characters.
+
 =item Win32::GetArchName()
 
-[EXT] Use of this function is deprecated.  It is equivalent with
+Use of this function is deprecated.  It is equivalent with
 $ENV{PROCESSOR_ARCHITECTURE}.  This might not work on Win9X.
 
 =item Win32::GetChipName()
 
-[EXT] Returns the processor type: 386, 486 or 586 for Intel processors,
+Returns the processor type: 386, 486 or 586 for Intel processors,
 21064 for the Alpha chip.
 
 =item Win32::GetCwd()
@@ -368,16 +375,39 @@ $ENV{PROCESSOR_ARCHITECTURE}.  This might not work on Win9X.
 does not return a UNC path, since the functionality required for such
 a feature is not available under Windows 95.
 
+If supported by the core Perl version, this function will return an
+ANSI path name for the current directory if the long pathname cannot
+be represented in the system codepage.
+
+=item Win32::GetCurrentProcessId()
+
+Returns the process identifier of the current process.  Until the
+process terminates, the process identifier uniquely identifies the
+process throughout the system.
+
+The current process identifier is normally also available via the
+predefined $$ variable.  Under fork() emulation however $$ may contain
+a pseudo-process identifier that is only meaningful to the Perl
+kill(), wait() and waitpid() functions.  The
+Win32::GetCurrentProcessId() function will always return the regular
+Windows process id, even when called from inside a pseudo-process.
+
+=item Win32::GetCurrentThreadId()
+
+Returns the thread identifier of the calling thread.  Until the thread
+terminates, the thread identifier uniquely identifies the thread
+throughout the system.
+
 =item Win32::GetFileVersion(FILENAME)
 
-[EXT] Returns the file version number from the VERSIONINFO resource of
+Returns the file version number from the VERSIONINFO resource of
 the executable file or DLL.  This is a tuple of four 16 bit numbers.
 In list context these four numbers will be returned.  In scalar context
 they are concatenated into a string, separated by dots.
 
 =item Win32::GetFolderPath(FOLDER [, CREATE])
 
-[EXT] Returns the full pathname of one of the Windows special folders.
+Returns the full pathname of one of the Windows special folders.
 The folder will be created if it doesn't exist and the optional CREATE
 argument is true.  The following FOLDER constants are defined by the
 Win32 module, but only exported on demand:
@@ -432,6 +462,11 @@ currently available at:
 
 http://msdn.microsoft.com/library/default.asp?url=/library/en-us/shellcc/platform/shell/reference/enums/csidl.asp
 
+This function will return an ANSI folder path if the long name cannot
+be represented in the system codepage.  Use Win32::GetLongPathName()
+on the result of Win32::GetFolderPath() if you want the Unicode
+version of the folder name.
+
 =item Win32::GetFullPathName(FILENAME)
 
 [CORE] GetFullPathName combines the FILENAME with the current drive
@@ -440,8 +475,12 @@ path name.  In list context it returns two elements: (PATH, FILE) where
 PATH is the complete pathname component (including trailing backslash)
 and FILE is just the filename part.  Note that no attempt is made to
 convert 8.3 components in the supplied FILENAME to longnames or
-vice-versa.  Compare with Win32::GetShortPathName and
-Win32::GetLongPathName.
+vice-versa.  Compare with Win32::GetShortPathName() and
+Win32::GetLongPathName().
+
+If supported by the core Perl version, this function will return an
+ANSI path name if the full pathname cannot be represented in the
+system codepage.
 
 =item Win32::GetLastError()
 
@@ -454,8 +493,12 @@ same value.
 [CORE] Returns a representation of PATHNAME composed of longname
 components (if any).  The result may not necessarily be longer
 than PATHNAME.  No attempt is made to convert PATHNAME to the
-absolute path.  Compare with Win32::GetShortPathName and
-Win32::GetFullPathName.
+absolute path.  Compare with Win32::GetShortPathName() and
+Win32::GetFullPathName().
+
+This function may return the pathname in Unicode if it cannot be
+represented in the system codepage.  Use Win32::GetANSIPathName()
+before passing the path to a system call or another program.
 
 =item Win32::GetNextAvailDrive()
 
@@ -469,7 +512,8 @@ elements are, respectively: An arbitrary descriptive string, the major
 version number of the operating system, the minor version number, the
 build number, and a digit indicating the actual operating system.
 For the ID, the values are 0 for Win32s, 1 for Windows 9X/Me and 2 for
-Windows NT/2000/XP/2003.  In scalar context it returns just the ID.
+Windows NT/2000/XP/2003/Vista/2008/7.  In scalar context it returns just
+the ID.
 
 Currently known values for ID MAJOR and MINOR are as follows:
 
@@ -484,9 +528,15 @@ Currently known values for ID MAJOR and MINOR are as follows:
     Windows XP             2      5       1
     Windows Server 2003    2      5       2
     Windows Vista          2      6       0
+    Windows Server 2008    2      6       0
+    Windows 7              2      6       1
 
 On Windows NT 4 SP6 and later this function returns the following
 additional values: SPMAJOR, SPMINOR, SUITEMASK, PRODUCTTYPE.
+
+The version numbers for Windows Vista and Windows Server 2008 are
+identical; the PRODUCTTYPE field must be used to differentiate
+between them.
 
 SPMAJOR and SPMINOR are are the version numbers of the latest
 installed service pack.
@@ -515,13 +565,16 @@ constants.
 PRODUCTTYPE provides additional information about the system.  It should
 be one of the following integer values:
 
-    1 - Workstation (NT 4, 2000 Pro, XP Home, XP Pro)
+    1 - Workstation (NT 4, 2000 Pro, XP Home, XP Pro, Vista)
     2 - Domaincontroller
-    3 - Server
+    3 - Server (2000 Server, Server 2003, Server 2008)
+
+Note that a server that is also a domain controller is reported as
+PRODUCTTYPE 2 (Domaincontroller) and not PRODUCTTYPE 3 (Server).
 
 =item Win32::GetOSName()
 
-[EXT] In scalar context returns the name of the Win32 operating system
+In scalar context returns the name of the Win32 operating system
 being used.  In list context returns a two element list of the OS name
 and whatever edition information is known about the particular build
 (for Win9X boxes) and whatever service packs have been installed.
@@ -530,7 +583,18 @@ GetOSVersion() in list context.
 
 Currently the possible values for the OS name are
 
- Win32s Win95 Win98 WinMe WinNT3.51 WinNT4 Win2000 WinXP/.Net Win2003
+    WinWin32s
+    Win95
+    Win98
+    WinMe
+    WinNT3.51
+    WinNT4
+    Win2000
+    WinXP/.Net
+    Win2003
+    WinVista
+    Win2008
+    Win7
 
 This routine is just a simple interface into GetOSVersion().  More
 specific or demanding situations should use that instead.  Another
@@ -543,18 +607,22 @@ backwards compatibility of the Win32 module.  Windows .NET Server has
 been renamed as Windows 2003 Server before final release and uses a
 different major/minor version number than Windows XP.
 
+Similarly the name "WinWin32s" should have been "Win32s" but has been
+kept as-is for backwards compatibility reasons too.
+
 =item Win32::GetShortPathName(PATHNAME)
 
 [CORE] Returns a representation of PATHNAME that is composed of short
 (8.3) path components where available.  For path components where the
 file system has not generated the short form the returned path will
 use the long form, so this function might still for instance return a
-path containing spaces.  Compare with Win32::GetFullPathName and
-Win32::GetLongPathName.
+path containing spaces.  Returns C<undef> when the PATHNAME does not
+exist. Compare with Win32::GetFullPathName() and
+Win32::GetLongPathName().
 
 =item Win32::GetProcAddress(INSTANCE, PROCNAME)
 
-[EXT] Returns the address of a function inside a loaded library.  The
+Returns the address of a function inside a loaded library.  The
 information about what you can do with this address has been lost in
 the mist of time.  Use the Win32::API module instead of this deprecated
 function.
@@ -567,7 +635,7 @@ on WinNT and 55ms on Win9X).
 
 =item Win32::GuidGen()
 
-[EXT] Creates a globally unique 128 bit integer that can be used as a
+Creates a globally unique 128 bit integer that can be used as a
 persistent identifier in a distributed setting. To a very high degree
 of certainty this function returns a unique value. No other
 invocation, on the same or any other system (networked or not), should
@@ -582,7 +650,7 @@ of hex digits with surrounding braces.  For example:
 
 (MACHINE, MESSAGE, TIMEOUT, FORCECLOSE, REBOOT)
 
-[EXT] Shutsdown the specified MACHINE, notifying users with the
+Shutsdown the specified MACHINE, notifying users with the
 supplied MESSAGE, within the specified TIMEOUT interval.  Forces
 closing of all documents without prompting the user if FORCECLOSE is
 true, and reboots the machine if REBOOT is true.  This function works
@@ -590,11 +658,13 @@ only on WinNT.
 
 =item Win32::IsAdminUser()
 
-[EXT] Returns non zero if the account in whose security context the
+Returns non zero if the account in whose security context the
 current process/thread is running belongs to the local group of
 Administrators in the built-in system domain; returns 0 if not.
-Returns the undefined value and prints a warning if an error occurred.
-This function always returns 1 on Win9X.
+On Windows Vista it will only return non-zero if the process is
+actually running with elevated privileges.  Returns C<undef>
+and prints a warning if an error occurred.  This function always
+returns 1 on Win9X.
 
 =item Win32::IsWinNT()
 
@@ -606,28 +676,29 @@ This function always returns 1 on Win9X.
 
 =item Win32::LoadLibrary(LIBNAME)
 
-[EXT] Loads a dynamic link library into memory and returns its module
-handle.  This handle can be used with Win32::GetProcAddress and
-Win32::FreeLibrary.  This function is deprecated.  Use the Win32::API
+Loads a dynamic link library into memory and returns its module
+handle.  This handle can be used with Win32::GetProcAddress() and
+Win32::FreeLibrary().  This function is deprecated.  Use the Win32::API
 module instead.
 
 =item Win32::LoginName()
 
 [CORE] Returns the username of the owner of the current perl process.
+The return value may be a Unicode string.
 
 =item Win32::LookupAccountName(SYSTEM, ACCOUNT, DOMAIN, SID, SIDTYPE)
 
-[EXT] Looks up ACCOUNT on SYSTEM and returns the domain name the SID and
+Looks up ACCOUNT on SYSTEM and returns the domain name the SID and
 the SID type.
 
 =item Win32::LookupAccountSID(SYSTEM, SID, ACCOUNT, DOMAIN, SIDTYPE)
 
-[EXT] Looks up SID on SYSTEM and returns the account name, domain name,
+Looks up SID on SYSTEM and returns the account name, domain name,
 and the SID type.
 
 =item Win32::MsgBox(MESSAGE [, FLAGS [, TITLE]])
 
-[EXT] Create a dialogbox containing MESSAGE.  FLAGS specifies the
+Create a dialogbox containing MESSAGE.  FLAGS specifies the
 required icon and buttons according to the following table:
 
 	0 = OK
@@ -660,9 +731,19 @@ The function returns the menu id of the selected push button:
 
 [CORE] Returns the Microsoft Network node-name of the current machine.
 
+=item Win32::OutputDebugString(STRING)
+
+Sends a string to the application or system debugger for display.
+The function does nothing if there is no active debugger.
+
+Alternatively one can use the I<Debug Viewer> application to
+watch the OutputDebugString() output:
+
+http://www.microsoft.com/technet/sysinternals/utilities/debugview.mspx
+
 =item Win32::RegisterServer(LIBRARYNAME)
 
-[EXT] Loads the DLL LIBRARYNAME and calls the function DllRegisterServer.
+Loads the DLL LIBRARYNAME and calls the function DllRegisterServer.
 
 =item Win32::SetChildShowWindow(SHOWWINDOW)
 
@@ -674,7 +755,7 @@ Calling SetChildShowWindow() without arguments reverts system() to the
 default behavior.  The return value of SetChildShowWindow() is the
 previous setting or C<undef>.
 
-[EXT] The following symbolic constants for SHOWWINDOW are available
+The following symbolic constants for SHOWWINDOW are available
 (but not exported) from the Win32 module: SW_HIDE, SW_SHOWNORMAL,
 SW_SHOWMINIMIZED, SW_SHOWMAXIMIZED and SW_SHOWNOACTIVATE.
 
@@ -704,7 +785,7 @@ instead.
 
 =item Win32::UnregisterServer(LIBRARYNAME)
 
-[EXT] Loads the DLL LIBRARYNAME and calls the function
+Loads the DLL LIBRARYNAME and calls the function
 DllUnregisterServer.
 
 =back

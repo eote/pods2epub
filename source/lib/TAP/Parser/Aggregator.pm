@@ -14,11 +14,11 @@ TAP::Parser::Aggregator - Aggregate TAP::Parser results
 
 =head1 VERSION
 
-Version 3.14
+Version 3.21
 
 =cut
 
-$VERSION = '3.14';
+$VERSION = '3.21';
 
 =head1 SYNOPSIS
 
@@ -71,9 +71,10 @@ BEGIN {    # install summary methods
       wait
       exit
     );
-    $SUMMARY_METHOD_FOR{total} = 'tests_run';
+    $SUMMARY_METHOD_FOR{total}   = 'tests_run';
+    $SUMMARY_METHOD_FOR{planned} = 'tests_planned';
 
-    foreach my $method ( keys %SUMMARY_METHOD_FOR ) {
+    for my $method ( keys %SUMMARY_METHOD_FOR ) {
         next if 'total' eq $method;
         no strict 'refs';
         *$method = sub {
@@ -89,7 +90,7 @@ sub _initialize {
     my ($self) = @_;
     $self->{parser_for}  = {};
     $self->{parse_order} = [];
-    foreach my $summary ( keys %SUMMARY_METHOD_FOR ) {
+    for my $summary ( keys %SUMMARY_METHOD_FOR ) {
         $self->{$summary} = 0;
         next if 'total' eq $summary;
         $self->{"descriptions_for_$summary"} = [];
@@ -174,7 +175,7 @@ sub parsers {
 sub _get_parsers {
     my ( $self, @descriptions ) = @_;
     my @parsers;
-    foreach my $description (@descriptions) {
+    for my $description (@descriptions) {
         $self->_croak("A parser for ($description) could not be found")
           unless exists $self->{parser_for}{$description};
         push @parsers => $self->{parser_for}{$description};
@@ -184,7 +185,8 @@ sub _get_parsers {
 
 =head3 C<descriptions>
 
-Get an array of descriptions in the order in which they were added to the aggregator.
+Get an array of descriptions in the order in which they were added to
+the aggregator.
 
 =cut
 
@@ -298,6 +300,8 @@ for an explanation of description.
 
 =item * passed
 
+=item * planned
+
 =item * skipped
 
 =item * todo
@@ -367,7 +371,7 @@ Returns true if I<any> of the parsers failed.  This includes:
 
 =item * Failed tests
 
-=item * Parse erros
+=item * Parse errors
 
 =item * Bad exit or wait status
 

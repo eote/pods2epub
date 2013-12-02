@@ -9,11 +9,11 @@ TAP::Object - Base class that provides common functionality to all C<TAP::*> mod
 
 =head1 VERSION
 
-Version 3.14
+Version 3.21
 
 =cut
 
-$VERSION = '3.14';
+$VERSION = '3.21';
 
 =head1 SYNOPSIS
 
@@ -93,6 +93,25 @@ sub _croak {
     return;
 }
 
+=head3 C<_confess>
+
+Raise an exception using C<confess> from L<Carp>, eg:
+
+    $self->_confess( 'why me?', 'aaarrgh!' );
+
+May also be called as a I<class> method.
+
+    $class->_confess( 'this works too' );
+
+=cut
+
+sub _confess {
+    my $proto = shift;
+    require Carp;
+    Carp::confess(@_);
+    return;
+}
+
 =head3 C<_construct>
 
 Create a new instance of the specified class.
@@ -112,6 +131,27 @@ sub _construct {
     }
 
     return $class->new(@args);
+}
+
+=head3 C<mk_methods>
+
+Create simple getter/setters.
+
+ __PACKAGE__->mk_methods(@method_names);
+
+=cut
+
+sub mk_methods {
+    my ( $class, @methods ) = @_;
+    for my $method_name (@methods) {
+        my $method = "${class}::$method_name";
+        no strict 'refs';
+        *$method = sub {
+            my $self = shift;
+            $self->{$method_name} = shift if @_;
+            return $self->{$method_name};
+        };
+    }
 }
 
 1;

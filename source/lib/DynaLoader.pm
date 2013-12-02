@@ -1,5 +1,5 @@
 
-# Generated from DynaLoader.pm.PL
+# Generated from DynaLoader_pm.PL
 
 package DynaLoader;
 
@@ -15,21 +15,40 @@ package DynaLoader;
 #
 # Tim.Bunce@ig.co.uk, August 1994
 
-use vars qw($VERSION *AUTOLOAD);
+# Sadly we can't remove this in 5.8.x *either*, because we had being using
+# vars, and vars.pm requires warnings::register requires warnings requires
+# Carp, and at that point we're covering up buggy code that does require Carp;
+# Carp::croak "..."; without brackets. Only now will 5.10.0 actually manage
+# to ship a DynaLoader that doesn't indirectly load Carp;
+require Carp;
 
-$VERSION = '1.05';	# avoid typo warning
+BEGIN {
+    $VERSION = '1.09';
+}
+
+# See http://rt.perl.org/rt3//Public/Bug/Display.html?id=32539
+# for why we need this. Basically any embedded code will have 1.05 hard-coded
+# in it as the XS_VERSION to check against. If a shared libperl is upgraded,
+# then it will pull in a newer DynaLoader.pm file, because the shared libperl
+# provides the paths for @INC. The file in @INC provides the
+# $DynaLoader::XS_VERSION that the existing embedded code checks against, so
+# we must keep this value constant, else bootstrap_DynaLoader will croak()
+# Whilst moving bootstrap_DynaLoader to the shared libperl is the correct
+# long-term fix, it doesn't help current installations, as they're still
+# going to find the boot_DynaLoader linked to them (with its hard-coded 1.05)
+# (It's found via a passed in function pointer in the xsinit parameter to
+# perl_parse, and in turn that is typically the static function xs_init
+# defined in the same place as the caller to perl_parse, and at the same time,
+# so compiled in and installed as binaries now deployed.)
+
+BEGIN {
+    $XS_VERSION = '1.05';
+}
 
 require AutoLoader;
 *AUTOLOAD = \&AutoLoader::AUTOLOAD;
 
 use Config;
-
-# The following require can't be removed during maintenance
-# releases, sadly, because of the risk of buggy code that does 
-# require Carp; Carp::croak "..."; without brackets dying 
-# if Carp hasn't been loaded in earlier compile time. :-( 
-# We'll let those bugs get found on the development track.
-require Carp if $] < 5.00450; 
 
 # enable debug/trace messages from DynaLoader perl code
 $dl_debug = $ENV{PERL_DL_DEBUG} || 0 unless defined $dl_debug;
@@ -47,20 +66,12 @@ $dl_debug = $ENV{PERL_DL_DEBUG} || 0 unless defined $dl_debug;
 
 sub dl_load_flags { 0x00 }
 
-# ($dl_dlext, $dlsrc)
-#         = @Config::Config{'dlext', 'dlsrc'};
-  ($dl_dlext, $dlsrc) = ('dll','dl_win32.xs')
-;
-# Some systems need special handling to expand file specifications
-# (VMS support by Charles Bailey <bailey@HMIVAX.HUMGEN.UPENN.EDU>)
-# See dl_expandspec() for more details. Should be harmless but
-# inefficient to define on systems that don't need it.
-$Is_VMS    = $^O eq 'VMS';
-$do_expand = $Is_VMS;
-$Is_MacOS  = $^O eq 'MacOS';
+($dl_dlext, $dl_so, $dlsrc) = @Config::Config{qw(dlext so dlsrc)};
 
-my $Mac_FS;
-$Mac_FS = eval { require Mac::FileSpec::Unixish } if $Is_MacOS;
+
+$do_expand = 0;
+
+
 
 @dl_require_symbols = ();       # names of symbols we need
 @dl_resolve_using   = ();       # names of files to link with
@@ -146,6 +157,8 @@ sub bootstrap {
 	"  dynamic loading or has the $module module statically linked into it.)\n")
 	unless defined(&dl_load_file);
 
+
+    
     my @modparts = split(/::/,$module);
     my $modfname = $modparts[-1];
 
@@ -154,37 +167,24 @@ sub bootstrap {
     # It may also edit @modparts if required.
     $modfname = &mod2fname(\@modparts) if defined &mod2fname;
 
-    # Truncate the module name to 8.3 format for NetWare
-	if (($^O eq 'NetWare') && (length($modfname) > 8)) {
-		$modfname = substr($modfname, 0, 8);
-	}
+    
 
-    my $modpname = join(($Is_MacOS ? ':' : '/'),@modparts);
+    my $modpname = join('/',@modparts);
 
     print STDERR "DynaLoader::bootstrap for $module ",
-		($Is_MacOS
-		       ? "(:auto:$modpname:$modfname.$dl_dlext)\n" :
-		       "(auto/$modpname/$modfname.$dl_dlext)\n")
+		       "(auto/$modpname/$modfname.$dl_dlext)\n"
 	if $dl_debug;
 
     foreach (@INC) {
-	chop($_ = VMS::Filespec::unixpath($_)) if $Is_VMS;
-	my $dir;
-	if ($Is_MacOS) {
-	    my $path = $_;
-	    if ($Mac_FS && ! -d $path) {
-		$path = Mac::FileSpec::Unixish::nativize($path);
-	    }
-	    $path .= ":"  unless /:$/;
-	    $dir = "${path}auto:$modpname";
-	} else {
-	    $dir = "$_/auto/$modpname";
-	}
+	
+	
+	    my $dir = "$_/auto/$modpname";
+	
 	
 	next unless -d $dir; # skip over uninteresting directories
 	
 	# check for common cases to avoid autoload of dl_findfile
-	my $try = $Is_MacOS ? "$dir:$modfname.$dl_dlext" : "$dir/$modfname.$dl_dlext";
+	my $try =  "$dir/$modfname.$dl_dlext";
 	last if $file = ($do_expand) ? dl_expandspec($try) : ((-f $try) && $try);
 	
 	# no luck here, save dir for possible later dl_findfile search
@@ -196,7 +196,7 @@ sub bootstrap {
     croak("Can't locate loadable object for module $module in \@INC (\@INC contains: @INC)")
 	unless $file;	# wording similar to error from 'require'
 
-    $file = uc($file) if $Is_VMS && $Config::Config{d_vms_case_sensitive_symbols};
+    
     my $bootname = "boot_$module";
     $bootname =~ s/\W/_/g;
     @dl_require_symbols = ($bootname);
@@ -214,11 +214,7 @@ sub bootstrap {
 
     my $boot_symbol_ref;
 
-    if ($^O eq 'darwin') {
-        if ($boot_symbol_ref = dl_find_symbol(0, $bootname)) {
-            goto boot; #extension library has already been loaded, e.g. darwin
-        }
-    }
+    
 
     # Many dynamic extension loading problems will appear to come from
     # this section of code: XYZ failed at line 123 of DynaLoader.pm.
@@ -273,66 +269,35 @@ sub dl_findfile {
     my (@args) = @_;
     my (@dirs,  $dir);   # which directories to search
     my (@found);         # full paths to real files we have found
-    my $dl_ext= 'dll'; # $Config::Config{'dlext'} suffix for perl extensions
-    my $dl_so = 'dll'; # $Config::Config{'so'} suffix for shared libraries
+    #my $dl_ext= 'dll'; # $Config::Config{'dlext'} suffix for perl extensions
+    #my $dl_so = 'dll'; # $Config::Config{'so'} suffix for shared libraries
 
     print STDERR "dl_findfile(@args)\n" if $dl_debug;
 
     # accumulate directories but process files as they appear
     arg: foreach(@args) {
         #  Special fast case: full filepath requires no search
-        if ($Is_VMS && m%[:>/\]]% && -f $_) {
-	    push(@found,dl_expandspec(VMS::Filespec::vmsify($_)));
-	    last arg unless wantarray;
-	    next;
-        }
-	elsif ($Is_MacOS) {
-	    if (m/:/ && -f $_) {
-	    	push(@found,$_);
-	    	last arg unless wantarray;
-	    }
-	}
-        elsif (m:/: && -f $_ && !$do_expand) {
+	
+	
+	
+        if (m:/: && -f $_) {
 	    push(@found,$_);
 	    last arg unless wantarray;
 	    next;
 	}
+	
 
         # Deal with directories first:
         #  Using a -L prefix is the preferred option (faster and more robust)
         if (m:^-L:) { s/^-L//; push(@dirs, $_); next; }
 
-	if ($Is_MacOS) {
-            #  Otherwise we try to try to spot directories by a heuristic
-            #  (this is a more complicated issue than it first appears)
-	    if (m/:/ && -d $_) {   push(@dirs, $_); next; }
-            #  Only files should get this far...
-            my(@names, $name);    # what filenames to look for
-	    s/^-l//;
-	    push(@names, $_);
-            foreach $dir (@dirs, @dl_library_path) {
-            	next unless -d $dir;
-		$dir =~ s/^([^:]+)$/:$1/;
-		$dir =~ s/:$//;
-            	foreach $name (@names) {
-	    	    my($file) = "$dir:$name";
-                    print STDERR " checking in $dir for $name\n" if $dl_debug;
-		    if (-f $file) {
-                    	push(@found, $file);
-                    	next arg; # no need to look any further
-                    }
-                }
-	    }
-	    next;
-	}
+	
 	
         #  Otherwise we try to try to spot directories by a heuristic
         #  (this is a more complicated issue than it first appears)
         if (m:/: && -d $_) {   push(@dirs, $_); next; }
 
-        # VMS: we may be using native VMS directory syntax instead of
-        # Unix emulation, so check this as well
-        if ($Is_VMS && /[:>\]]/ && -d $_) {   push(@dirs, $_); next; }
+	
 
         #  Only files should get this far...
         my(@names, $name);    # what filenames to look for
@@ -342,17 +307,19 @@ sub dl_findfile {
             push(@names,"lib$_.a");
         } else {                # Umm, a bare name. Try various alternatives:
             # these should be ordered with the most likely first
-            push(@names,"$_.$dl_ext")    unless m/\.$dl_ext$/o;
+            push(@names,"$_.$dl_dlext")    unless m/\.$dl_dlext$/o;
             push(@names,"$_.$dl_so")     unless m/\.$dl_so$/o;
             push(@names,"lib$_.$dl_so")  unless m:/:;
             push(@names,"$_.a")          if !m/\.a$/ and $dlsrc eq "dl_dld.xs";
             push(@names, $_);
         }
+	my $dirsep = '/';
+	
         foreach $dir (@dirs, @dl_library_path) {
             next unless -d $dir;
-            chop($dir = VMS::Filespec::unixpath($dir)) if $Is_VMS;
+	    
             foreach $name (@names) {
-		my($file) = "$dir/$name";
+		my($file) = "$dir$dirsep$name";
                 print STDERR " checking in $dir for $name\n" if $dl_debug;
 		$file = ($do_expand) ? dl_expandspec($file) : (-f $file && $file);
 		#$file = _check_file($file);
@@ -390,12 +357,9 @@ sub dl_expandspec {
 
     my $file = $spec; # default output to input
 
-    if ($Is_VMS) { # dl_expandspec should be defined in dl_vms.xs
-	require Carp;
-	Carp::croak("dl_expandspec: should be defined in XS file!\n");
-    } else {
+    
 	return undef unless -f $file;
-    }
+    
     print STDERR "dl_expandspec($spec) => $file\n" if $dl_debug;
     $file;
 }

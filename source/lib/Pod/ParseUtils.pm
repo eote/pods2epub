@@ -8,9 +8,10 @@
 #############################################################################
 
 package Pod::ParseUtils;
+use strict;
 
 use vars qw($VERSION);
-$VERSION = 1.33;   ## Current version of this package
+$VERSION = '1.36'; ## Current version of this package
 require  5.005;    ## requires this Perl version or later
 
 =head1 NAME
@@ -252,7 +253,7 @@ sub new {
         }
         else {
             # called with L<> contents
-            return undef unless($self->parse($_[0]));
+            return unless($self->parse($_[0]));
         }
     }
     return $self;
@@ -293,14 +294,14 @@ sub parse {
 
     # strip leading/trailing whitespace
     if(s/^[\s\n]+//) {
-        $self->warning("ignoring leading whitespace in link");
+        $self->warning('ignoring leading whitespace in link');
     }
     if(s/[\s\n]+$//) {
-        $self->warning("ignoring trailing whitespace in link");
+        $self->warning('ignoring trailing whitespace in link');
     }
     unless(length($_)) {
-        _invalid_link("empty link");
-        return undef;
+        _invalid_link('empty link');
+        return;
     }
 
     ## Check for different possibilities. This is tedious and error-prone
@@ -313,67 +314,69 @@ sub parse {
     # to point to an internal funtion...
     my $page_rx = '[\w.-]+(?:::[\w.-]+)*(?:[(](?:\d\w*|)[)]|)';
     # page name only
-    if(m!^($page_rx)$!o) {
+    if(/^($page_rx)$/o) {
         $page = $1;
         $type = 'page';
     }
     # alttext, page and "section"
-    elsif(m!^(.*?)\s*[|]\s*($page_rx)\s*/\s*"(.+)"$!o) {
+    elsif(m{^(.*?)\s*[|]\s*($page_rx)\s*/\s*"(.+)"$}o) {
         ($alttext, $page, $node) = ($1, $2, $3);
         $type = 'section';
         $quoted = 1; #... therefore | and / are allowed
     }
     # alttext and page
-    elsif(m!^(.*?)\s*[|]\s*($page_rx)$!o) {
+    elsif(/^(.*?)\s*[|]\s*($page_rx)$/o) {
         ($alttext, $page) = ($1, $2);
         $type = 'page';
     }
     # alttext and "section"
-    elsif(m!^(.*?)\s*[|]\s*(?:/\s*|)"(.+)"$!) {
+    elsif(m{^(.*?)\s*[|]\s*(?:/\s*|)"(.+)"$}) {
         ($alttext, $node) = ($1,$2);
         $type = 'section';
         $quoted = 1;
     }
     # page and "section"
-    elsif(m!^($page_rx)\s*/\s*"(.+)"$!o) {
+    elsif(m{^($page_rx)\s*/\s*"(.+)"$}o) {
         ($page, $node) = ($1, $2);
         $type = 'section';
         $quoted = 1;
     }
     # page and item
-    elsif(m!^($page_rx)\s*/\s*(.+)$!o) {
+    elsif(m{^($page_rx)\s*/\s*(.+)$}o) {
         ($page, $node) = ($1, $2);
         $type = 'item';
     }
     # only "section"
-    elsif(m!^/?"(.+)"$!) {
+    elsif(m{^/?"(.+)"$}) {
         $node = $1;
         $type = 'section';
         $quoted = 1;
     }
     # only item
-    elsif(m!^\s*/(.+)$!) {
+    elsif(m{^\s*/(.+)$}) {
         $node = $1;
         $type = 'item';
     }
+
+    # non-standard: Hyperlink with alt-text - doesn't remove protocol prefix, maybe it should?
+    elsif(/^ \s* (.*?) \s* [|] \s* (\w+:[^:\s] [^\s|]*?) \s* $/ix) {
+      ($alttext,$node) = ($1,$2);
+      $type = 'hyperlink';
+    }
+
     # non-standard: Hyperlink
-    elsif(m!^(\w+:[^:\s]\S*)$!i) {
+    elsif(/^(\w+:[^:\s]\S*)$/i) {
         $node = $1;
         $type = 'hyperlink';
     }
     # alttext, page and item
-    elsif(m!^(.*?)\s*[|]\s*($page_rx)\s*/\s*(.+)$!o) {
+    elsif(m{^(.*?)\s*[|]\s*($page_rx)\s*/\s*(.+)$}o) {
         ($alttext, $page, $node) = ($1, $2, $3);
         $type = 'item';
     }
     # alttext and item
-    elsif(m!^(.*?)\s*[|]\s*/(.+)$!) {
+    elsif(m{^(.*?)\s*[|]\s*/(.+)$}) {
         ($alttext, $node) = ($1,$2);
-    }
-    # nonstandard: alttext and hyperlink
-    elsif(m!^(.*?)\s*[|]\s*(\w+:[^:\s]\S*)$!) {
-        ($alttext, $node) = ($1,$2);
-        $type = 'hyperlink';
     }
     # must be an item or a "malformed" section (without "")
     else {
@@ -386,7 +389,7 @@ sub parse {
     # empty alternative text expands to node name
     if(defined $alttext) {
         if(!length($alttext)) {
-          $alttext = $node | $page;
+          $alttext = $node || $page;
         }
     }
     else {
@@ -396,10 +399,10 @@ sub parse {
     if($page =~ /[(]\w*[)]$/) {
         $self->warning("(section) in '$page' deprecated");
     }
-    if(!$quoted && $node =~ m:[|/]: && $type ne 'hyperlink') {
+    if(!$quoted && $node =~ m{[|/]} && $type ne 'hyperlink') {
         $self->warning("node '$node' contains non-escaped | or /");
     }
-    if($alttext =~ m:[|/]:) {
+    if($alttext =~ m{[|/]}) {
         $self->warning("alternative text '$node' contains non-escaped | or /");
     }
     $self->{-page} = $page;
@@ -477,7 +480,7 @@ that are marked up):
 
 # The complete link's text
 sub text {
-    $_[0]->{_text};
+    return $_[0]->{_text};
 }
 
 =item $link-E<gt>warning()
@@ -528,7 +531,7 @@ sub page {
         $_[0]->{-page} = $_[1];
         $_[0]->_construct_text();
     }
-    $_[0]->{-page};
+    return $_[0]->{-page};
 }
 
 =item $link-E<gt>node()
@@ -543,7 +546,7 @@ sub node {
         $_[0]->{-node} = $_[1];
         $_[0]->_construct_text();
     }
-    $_[0]->{-node};
+    return $_[0]->{-node};
 }
 
 =item $link-E<gt>alttext()
@@ -558,7 +561,7 @@ sub alttext {
         $_[0]->{-alttext} = $_[1];
         $_[0]->_construct_text();
     }
-    $_[0]->{-alttext};
+    return $_[0]->{-alttext};
 }
 
 =item $link-E<gt>type()
@@ -587,8 +590,8 @@ sub link {
     my $link = $self->page() || '';
     if($self->node()) {
         my $node = $self->node();
-        $text =~ s/\|/E<verbar>/g;
-        $text =~ s:/:E<sol>:g;
+        $node =~ s/\|/E<verbar>/g;
+        $node =~ s{/}{E<sol>}g;
         if($self->type() eq 'section') {
             $link .= ($link ? '/' : '') . '"' . $node . '"';
         }
@@ -602,10 +605,10 @@ sub link {
     if($self->alttext()) {
         my $text = $self->alttext();
         $text =~ s/\|/E<verbar>/g;
-        $text =~ s:/:E<sol>:g;
+        $text =~ s{/}{E<sol>}g;
         $link = "$text|$link";
     }
-    $link;
+    return $link;
 }
 
 sub _invalid_link {
@@ -614,7 +617,7 @@ sub _invalid_link {
     #eval { die "$msg\n" };
     #chomp $@;
     $@ = $msg; # this seems to work, too!
-    undef;
+    return;
 }
 
 #-----------------------------------------------------------------------------
@@ -684,7 +687,7 @@ sub find_page {
             return $_;
         }
     }
-    undef;
+    return;
 }
 
 package Pod::Cache::Item;
@@ -792,7 +795,7 @@ sub nodes {
 
 Look for a node or index entry named C<$name> in the object.
 Returns the unique id of the node (i.e. the second element of the array
-stored in the node arry) or undef if not found.
+stored in the node array) or undef if not found.
 
 =cut
 
@@ -806,7 +809,7 @@ sub find_node {
             return $_->[1]; # id
         }
     }
-    undef;
+    return;
 }
 
 =item $cacheitem-E<gt>idx()

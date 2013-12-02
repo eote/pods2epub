@@ -1,14 +1,15 @@
 package Encode::TW;
 BEGIN {
-    if (ord("A") == 193) {
-	die "Encode::TW not supported on EBCDIC\n";
+    if ( ord("A") == 193 ) {
+        die "Encode::TW not supported on EBCDIC\n";
     }
 }
-our $VERSION = do { my @r = (q$Revision: 2.0 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
-
+use strict;
+use warnings;
 use Encode;
+our $VERSION = do { my @r = ( q$Revision: 2.3 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r };
 use XSLoader;
-XSLoader::load(__PACKAGE__,$VERSION);
+XSLoader::load( __PACKAGE__, $VERSION );
 
 1;
 __END__
@@ -32,8 +33,8 @@ Encodings supported are as follows.
   Canonical   Alias		Description
   --------------------------------------------------------------------
   big5-eten   /\bbig-?5$/i	Big5 encoding (with ETen extensions)
-	      /\bbig5-?et(en)?$/i
-	      /\btca-?big5$/i
+          /\bbig5-?et(en)?$/i
+          /\btca-?big5$/i
   big5-hkscs  /\bbig5-?hk(scs)?$/i
               /\bhk(scs)?-?big5$/i
                                 Big5 + Cantonese characters in Hong Kong
@@ -65,11 +66,7 @@ manipulation, please use C<EUC-TW> in L<Encode::HanExtra>, which contains
 planes 1-7.
 
 The ASCII region (0x00-0x7f) is preserved for all encodings, even
-though this conflicts with mappings by the Unicode Consortium.  See
-
-L<http://www.debian.or.jp/~kubota/unicode-symbols.html.en>
-
-to find out why it is implemented that way.
+though this conflicts with mappings by the Unicode Consortium.
 
 =head1 SEE ALSO
 

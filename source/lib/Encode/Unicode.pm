@@ -4,10 +4,10 @@ use strict;
 use warnings;
 no warnings 'redefine';
 
-our $VERSION = do { my @r = (q$Revision: 2.2 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+our $VERSION = do { my @r = ( q$Revision: 2.7 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r };
 
 use XSLoader;
-XSLoader::load(__PACKAGE__,$VERSION);
+XSLoader::load( __PACKAGE__, $VERSION );
 
 #
 # Object Generator 8 transcoders all at once!
@@ -15,38 +15,40 @@ XSLoader::load(__PACKAGE__,$VERSION);
 
 require Encode;
 
-our %BOM_Unknown = map {$_ => 1} qw(UTF-16 UTF-32);
+our %BOM_Unknown = map { $_ => 1 } qw(UTF-16 UTF-32);
 
-for my $name (qw(UTF-16 UTF-16BE UTF-16LE
-                 UTF-32 UTF-32BE UTF-32LE
-                        UCS-2BE  UCS-2LE))
+for my $name (
+    qw(UTF-16 UTF-16BE UTF-16LE
+    UTF-32 UTF-32BE UTF-32LE
+    UCS-2BE  UCS-2LE)
+  )
 {
-    my ($size, $endian, $ucs2, $mask);
+    my ( $size, $endian, $ucs2, $mask );
     $name =~ /^(\w+)-(\d+)(\w*)$/o;
-    if ($ucs2 = ($1 eq 'UCS')){
-	$size = 2;
-    }else{
-	$size = $2/8;
+    if ( $ucs2 = ( $1 eq 'UCS' ) ) {
+        $size = 2;
     }
-    $endian = ($3 eq 'BE') ? 'n' : ($3 eq 'LE') ? 'v' : '' ;
+    else {
+        $size = $2 / 8;
+    }
+    $endian = ( $3 eq 'BE' ) ? 'n' : ( $3 eq 'LE' ) ? 'v' : '';
     $size == 4 and $endian = uc($endian);
 
-    $Encode::Encoding{$name} = 	
-	bless {
-	       Name   =>   $name,
-	       size   =>   $size,
-	       endian => $endian,
-	       ucs2   =>   $ucs2,
-	      } => __PACKAGE__;
+    $Encode::Encoding{$name} = bless {
+        Name   => $name,
+        size   => $size,
+        endian => $endian,
+        ucs2   => $ucs2,
+    } => __PACKAGE__;
 }
 
 use base qw(Encode::Encoding);
 
-sub renew { 
+sub renew {
     my $self = shift;
-    $BOM_Unknown{$self->name} or return $self;
-    my $clone = bless { %$self } => ref($self);
-    $clone->{renewed}++; # so the caller knows it is renewed.
+    $BOM_Unknown{ $self->name } or return $self;
+    my $clone = bless {%$self} => ref($self);
+    $clone->{renewed}++;    # so the caller knows it is renewed.
     return $clone;
 }
 
@@ -67,7 +69,7 @@ Encode::Unicode -- Various Unicode Transformation Formats
 
 =head1 SYNOPSIS
 
-    use Encode qw/encode decode/; 
+    use Encode qw/encode decode/;
     $ucs2 = encode("UCS-2BE", $utf8);
     $utf8 = decode("UCS-2BE", $ucs2);
 
@@ -95,14 +97,14 @@ Encode::Unicode::UTF7.  For details see L<Encode::Unicode::UTF7>.
                 Decodes from ord(N)           Encodes chr(N) to...
        octet/char BOM S.P d800-dfff  ord > 0xffff     \x{1abcd} ==
   ---------------+-----------------+------------------------------
-  UCS-2BE	2   N   N  is bogus                  Not Available
+  UCS-2BE       2   N   N  is bogus                  Not Available
   UCS-2LE       2   N   N     bogus                  Not Available
   UTF-16      2/4   Y   Y  is   S.P           S.P            BE/LE
   UTF-16BE    2/4   N   Y       S.P           S.P    0xd82a,0xdfcd
-  UTF-16LE	2   N   Y       S.P           S.P    0x2ad8,0xcddf
-  UTF-32	4   Y   -  is bogus         As is            BE/LE
-  UTF-32BE	4   N   -     bogus         As is       0x0001abcd
-  UTF-32LE	4   N   -     bogus         As is       0xcdab0100
+  UTF-16LE    2/4   N   Y       S.P           S.P    0x2ad8,0xcddf
+  UTF-32        4   Y   -  is bogus         As is            BE/LE
+  UTF-32BE      4   N   -     bogus         As is       0x0001abcd
+  UTF-32LE      4   N   -     bogus         As is       0xcdab0100
   UTF-8       1-4   -   -     bogus   >= 4 octets   \xf0\x9a\af\8d
   ---------------+-----------------+------------------------------
 
@@ -156,7 +158,7 @@ and as of this writing Encode suite just leave it as is (\x{FeFF}).
               16         32 bits/char
   -------------------------
   BE      0xFeFF 0x0000FeFF
-  LE      0xFFeF 0xFFFe0000
+  LE      0xFFFe 0xFFFe0000
   -------------------------
 
 =back
@@ -228,7 +230,7 @@ And to desurrogate;
  $uni = 0x10000 + ($hi - 0xD800) * 0x400 + ($lo - 0xDC00);
 
 Note this move has made \x{D800}-\x{DFFF} into a forbidden zone but
-perl does not prohibit the use of characters within this range.  To perl, 
+perl does not prohibit the use of characters within this range.  To perl,
 every one of \x{0000_0000} up to \x{ffff_ffff} (*) is I<a character>.
 
   (*) or \x{ffff_ffff_ffff_ffff} if your perl is compiled with 64-bit
@@ -239,11 +241,11 @@ every one of \x{0000_0000} up to \x{ffff_ffff} (*) is I<a character>.
 Unlike most encodings which accept various ways to handle errors,
 Unicode encodings simply croaks.
 
-  % perl -MEncode -e '$_ = "\xfe\xff\xd8\xd9\xda\xdb\0\n"' \
-         -e 'Encode::from_to($_, "utf16","shift_jis", 0); print'
+  % perl -MEncode -e'$_ = "\xfe\xff\xd8\xd9\xda\xdb\0\n"' \
+         -e'Encode::from_to($_, "utf16","shift_jis", 0); print'
   UTF-16:Malformed LO surrogate d8d9 at /path/to/Encode.pm line 184.
-  % perl -MEncode -e '$a = "BOM missing"' \
-         -e ' Encode::from_to($a, "utf16", "shift_jis", 0); print'
+  % perl -MEncode -e'$a = "BOM missing"' \
+         -e' Encode::from_to($a, "utf16", "shift_jis", 0); print'
   UTF-16:Unrecognised BOM 424f at /path/to/Encode.pm line 184.
 
 Unlike other encodings where mappings are not one-to-one against
@@ -257,12 +259,12 @@ Consider that "division by zero" of Encode :)
 L<Encode>, L<Encode::Unicode::UTF7>, L<http://www.unicode.org/glossary/>,
 L<http://www.unicode.org/unicode/faq/utf_bom.html>,
 
-RFC 2781 L<http://rfc.net/rfc2781.html>,
+RFC 2781 L<http://www.ietf.org/rfc/rfc2781.txt>,
 
 The whole Unicode standard L<http://www.unicode.org/unicode/uni2book/u2.html>
 
 Ch. 15, pp. 403 of C<Programming Perl (3rd Edition)>
-by Larry Wall, Tom Christiansen, Jon Orwant; 
+by Larry Wall, Tom Christiansen, Jon Orwant;
 O'Reilly & Associates; ISBN 0-596-00027-8
 
 =cut

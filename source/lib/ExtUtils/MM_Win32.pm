@@ -27,12 +27,13 @@ use ExtUtils::MakeMaker qw( neatvalue );
 require ExtUtils::MM_Any;
 require ExtUtils::MM_Unix;
 our @ISA = qw( ExtUtils::MM_Any ExtUtils::MM_Unix );
-our $VERSION = '6.48';
+our $VERSION = '6.56';
 
 $ENV{EMXSHELL} = 'sh'; # to run `commands`
 
 my $BORLAND = $Config{'cc'} =~ /^bcc/i ? 1 : 0;
-my $GCC     = $Config{'cc'} =~ /^gcc/i ? 1 : 0;
+my $GCC     = $Config{'cc'} =~ /\bgcc$/i ? 1 : 0;
+my $DLLTOOL = $Config{'dlltool'} || 'dlltool';
 
 
 =head2 Overridden methods
@@ -149,26 +150,15 @@ Adjustments are made for Borland's quirks needing -L to come first.
 sub init_others {
     my ($self) = @_;
 
-    # Used in favor of echo because echo won't strip quotes. :(
-    $self->{ECHO}     ||= $self->oneliner('print qq{@ARGV}', ['-l']);
-    $self->{ECHO_N}   ||= $self->oneliner('print qq{@ARGV}');
-
-    $self->{TOUCH}    ||= '$(ABSPERLRUN) -MExtUtils::Command -e touch';
-    $self->{CHMOD}    ||= '$(ABSPERLRUN) -MExtUtils::Command -e chmod'; 
-    $self->{CP}       ||= '$(ABSPERLRUN) -MExtUtils::Command -e cp';
-    $self->{RM_F}     ||= '$(ABSPERLRUN) -MExtUtils::Command -e rm_f';
-    $self->{RM_RF}    ||= '$(ABSPERLRUN) -MExtUtils::Command -e rm_rf';
-    $self->{MV}       ||= '$(ABSPERLRUN) -MExtUtils::Command -e mv';
     $self->{NOOP}     ||= 'rem';
-    $self->{TEST_F}   ||= '$(ABSPERLRUN) -MExtUtils::Command -e test_f';
     $self->{DEV_NULL} ||= '> NUL';
 
     $self->{FIXIN}    ||= $self->{PERL_CORE} ? 
       "\$(PERLRUN) $self->{PERL_SRC}/win32/bin/pl2bat.pl" : 
       'pl2bat.bat';
 
-    $self->{LD}     ||= $Config{ld} || 'link';
-    $self->{AR}     ||= $Config{ar} || 'lib';
+    $self->{LD}     ||= 'link';
+    $self->{AR}     ||= 'lib';
 
     $self->SUPER::init_others;
 
@@ -320,9 +310,9 @@ $(INST_DYNAMIC): $(OBJECT) $(MYEXTLIB) $(BOOTSTRAP) $(INST_ARCHAUTODIR)$(DFSEP).
 ');
     if ($GCC) {
       push(@m,  
-       q{	dlltool --def $(EXPORT_LIST) --output-exp dll.exp
+       q{	}.$DLLTOOL.q{ --def $(EXPORT_LIST) --output-exp dll.exp
 	$(LD) -o $@ -Wl,--base-file -Wl,dll.base $(LDDLFLAGS) }.$ldfrom.q{ $(OTHERLDFLAGS) $(MYEXTLIB) $(PERL_ARCHIVE) $(LDLOADLIBS) dll.exp
-	dlltool --def $(EXPORT_LIST) --base-file dll.base --output-exp dll.exp
+	}.$DLLTOOL.q{ --def $(EXPORT_LIST) --base-file dll.base --output-exp dll.exp
 	$(LD) -o $@ $(LDDLFLAGS) }.$ldfrom.q{ $(OTHERLDFLAGS) $(MYEXTLIB) $(PERL_ARCHIVE) $(LDLOADLIBS) dll.exp });
     } elsif ($BORLAND) {
       push(@m,
@@ -338,13 +328,10 @@ $(INST_DYNAMIC): $(OBJECT) $(MYEXTLIB) $(BOOTSTRAP) $(INST_ARCHAUTODIR)$(DFSEP).
        q{	$(LD) -out:$@ $(LDDLFLAGS) }.$ldfrom.q{ $(OTHERLDFLAGS) }
       .q{$(MYEXTLIB) $(PERL_ARCHIVE) $(LDLOADLIBS) -def:$(EXPORT_LIST)});
 
-      # VS2005 (aka VC 8) or higher, but not for 64-bit compiler from Platform SDK
-      if ($Config{ivsize} == 4 && $Config{cc} eq 'cl' and $Config{ccversion} =~ /^(\d+)/ and $1 >= 14) 
-    {
-        push(@m,
-          q{
-	mt -nologo -manifest $@.manifest -outputresource:$@;2 && del $@.manifest});
-      }
+      # Embed the manifest file if it exists
+      push(@m, q{
+	if exist $@.manifest mt -nologo -manifest $@.manifest -outputresource:$@;2
+	if exist $@.manifest del $@.manifest});
     }
     push @m, '
 	$(CHMOD) $(PERM_RWX) $@
@@ -419,6 +406,31 @@ sub pasthru {
 }
 
 
+=item arch_check (override)
+
+Normalize all arguments for consistency of comparison.
+
+=cut
+
+sub arch_check {
+    my $self = shift;
+
+    # Win32 is an XS module, minperl won't have it.
+    # arch_check() is not critical, so just fake it.
+    return 1 unless $self->can_load_xs;
+    return $self->SUPER::arch_check( map { $self->_normalize_path_name($_) } @_);
+}
+
+sub _normalize_path_name {
+    my $self = shift;
+    my $file = shift;
+
+    require Win32;
+    my $short = Win32::GetShortPathName($file);
+    return defined $short ? lc $short : lc $file;
+}
+
+
 =item oneliner
 
 These are based on what command.com does on Win98.  They may be wrong
@@ -478,12 +490,10 @@ sub escape_newlines {
 dmake can handle Unix style cd'ing but nmake (at least 1.5) cannot.  It
 wants:
 
-    cd dir
+    cd dir1\dir2
     command
     another_command
-    cd ..
-
-NOTE: This only works with simple relative directories.  Throw it an absolute dir or something with .. in it and things will go wrong.
+    cd ..\..
 
 =cut
 

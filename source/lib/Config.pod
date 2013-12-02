@@ -113,9 +113,13 @@ some of the variables described below, or may have extraneous variables
 specific to that particular port.  See the port specific documentation
 in such cases.
 
+=cut
+
 =head2 _
 
 =over 4
+
+=cut
 
 =item C<_a>
 
@@ -144,9 +148,13 @@ values include F<.obj>.
 
 =back
 
+=cut
+
 =head2 a
 
 =over 4
+
+=cut
 
 =item C<afs>
 
@@ -164,7 +172,7 @@ From F<afs.U>:
 This variable is by default set to F</afs>. In the unlikely case
 this is not the correct root, it is possible to override this with
 a hint value or command line option.  This will be used in subsequent
-tests for AFSness in the Perl configure and test process. 
+tests for AFSness in the Perl configure and test process.
 
 =item C<alignbytes>
 
@@ -178,7 +186,7 @@ double-- or a long double when applicable. Usual values are
 
 From F<ansi2knr.U>:
 
-This variable is set if the user needs to run ansi2knr.  
+This variable is set if the user needs to run ansi2knr.
 Currently, this is not supported, so we just abort.
 
 =item C<aphostname>
@@ -272,18 +280,18 @@ From F<archlib.U>:
 This variable is the same as the archlib variable, but is
 filename expanded at configuration time, for convenient use.
 
-=item C<archname64>
-
-From F<use64bits.U>:
-
-This variable is used for the 64-bitness part of $archname.
-
 =item C<archname>
 
 From F<archname.U>:
 
 This variable is a short name to characterize the current
 architecture.  It is used mainly to construct the default archlib.
+
+=item C<archname64>
+
+From F<use64bits.U>:
+
+This variable is used for the 64-bitness part of $archname.
 
 =item C<archobjs>
 
@@ -314,9 +322,13 @@ the value is reset to a plain C<awk> and is not useful.
 
 =back
 
+=cut
+
 =head2 b
 
 =over 4
+
+=cut
 
 =item C<baserev>
 
@@ -374,9 +386,13 @@ or 87654321 on a Cray ... or 3412 with weird order !
 
 =back
 
+=cut
+
 =head2 c
 
 =over 4
+
+=cut
 
 =item C<c>
 
@@ -493,13 +509,6 @@ From F<cf_who.U>:
 
 Holds the output of the C<date> command when the configuration file was
 produced. This is used to tag both F<config.sh> and F<config_h.SH>.
-
-=item C<charsize>
-
-From F<charsize.U>:
-
-This variable contains the value of the C<CHARSIZE> symbol, which
-indicates to the C program how many bytes there are in a character.
 
 =item C<chgrp>
 
@@ -691,9 +700,13 @@ is defined.
 
 =back
 
+=cut
+
 =head2 d
 
 =over 4
+
+=cut
 
 =item C<d__fwalk>
 
@@ -763,14 +776,14 @@ indicates to the C program that the atoll() routine is available.
 
 =item C<d_attribute_format>
 
-From F<d_attribut_format.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines C<HASATTRIBUTE_FORMAT>, which
 indicates the C compiler can check for printf-like formats.
 
 =item C<d_attribute_malloc>
 
-From F<d_attribute_malloc.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines C<HASATTRIBUTE_MALLOC>, which
 indicates the C compiler can understand functions as having
@@ -778,7 +791,7 @@ malloc-like semantics.
 
 =item C<d_attribute_nonnull>
 
-From F<d_attribute_nonnull.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines C<HASATTRIBUTE_NONNULL>, which
 indicates that the C compiler can know that certain arguments
@@ -786,7 +799,7 @@ must not be C<NULL>, and will check accordingly at compile time.
 
 =item C<d_attribute_noreturn>
 
-From F<d_attribute_noreturn.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines C<HASATTRIBUTE_NORETURN>, which
 indicates that the C compiler can know that certain functions
@@ -794,7 +807,7 @@ are guaranteed never to return.
 
 =item C<d_attribute_pure>
 
-From F<d_attribute_pure.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines C<HASATTRIBUTE_PURE>, which
 indicates that the C compiler can know that certain functions
@@ -803,7 +816,7 @@ only rely on function input F<and/or> global data for their results.
 
 =item C<d_attribute_unused>
 
-From F<d_attribute_unused.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines C<HASATTRIBUTE_UNUSED>, which
 indicates that the C compiler can know that certain variables
@@ -812,7 +825,7 @@ if they don't get used.
 
 =item C<d_attribute_warn_unused_result>
 
-From F<d_attribute_warn_unused_result.U>:
+From F<d_attribut.U>:
 
 This variable conditionally defines
 C<HASATTRIBUTE_WARN_UNUSED_RESULT>, which indicates that the C
@@ -855,12 +868,40 @@ This variable conditionally defines C<USE_BSD_SETPGRP> if
 setpgrp needs two arguments whereas C<USG> one needs none.
 See also d_setpgid for a C<POSIX> interface.
 
+=item C<d_builtin_choose_expr>
+
+From F<d_builtin.U>:
+
+This conditionally defines C<HAS_BUILTIN_CHOOSE_EXPR>, which
+indicates that the compiler supports __builtin_choose_expr(x,y,z).
+This built-in function is analogous to the C<x?y:z> operator in C,
+except that the expression returned has its type unaltered by
+promotion rules. Also, the built-in function does not evaluate
+the expression that was not chosen.
+
+=item C<d_builtin_expect>
+
+From F<d_builtin.U>:
+
+This conditionally defines C<HAS_BUILTIN_EXPECT>, which indicates
+that the compiler supports __builtin_expect(exp,c).  You may use
+__builtin_expect to provide the compiler with branch prediction
+information.
+
 =item C<d_bzero>
 
 From F<d_bzero.U>:
 
 This variable conditionally defines the C<HAS_BZERO> symbol if
 the bzero() routine is available to set memory to 0.
+
+=item C<d_c99_variadic_macros>
+
+From F<d_c99_variadic.U>:
+
+This variable conditionally defines the HAS_C99_VARIADIC_MACROS
+symbol, which indicates to the C program that C99 variadic macros
+are available.
 
 =item C<d_casti32>
 
@@ -950,6 +991,14 @@ This variable conditionally defines the C<HAS_COPYSIGNL> symbol, which
 indicates to the C program that the copysignl() routine is available.
 If aintl is also present we can emulate modfl.
 
+=item C<d_cplusplus>
+
+From F<d_cplusplus.U>:
+
+This variable conditionally defines the C<USE_CPLUSPLUS> symbol, which
+indicates that a C++ compiler was used to compiled Perl and will be
+used to compile extensions.
+
 =item C<d_crypt>
 
 From F<d_crypt.U>:
@@ -972,6 +1021,13 @@ From F<d_csh.U>:
 
 This variable conditionally defines the C<CSH> symbol, which
 indicates to the C program that the C-shell exists.
+
+=item C<d_ctermid>
+
+From F<d_ctermid.U>:
+
+This variable conditionally defines C<CTERMID> if ctermid() is
+available to generate filename for terminal.
 
 =item C<d_ctermid_r>
 
@@ -1020,6 +1076,14 @@ From F<d_difftime.U>:
 
 This variable conditionally defines the C<HAS_DIFFTIME> symbol, which
 indicates to the C program that the difftime() routine is available.
+
+=item C<d_dir_dd_fd>
+
+From F<d_dir_dd_fd.U>:
+
+This variable conditionally defines the C<HAS_DIR_DD_FD> symbol, which
+indicates that the C<DIR> directory stream type contains a member
+variable called dd_fd.
 
 =item C<d_dirfd>
 
@@ -1434,7 +1498,7 @@ a sub-second accuracy clock.
 
 =item C<d_futimes>
 
-From F<f_futimes.U>:
+From F<d_futimes.U>:
 
 This variable conditionally defines the C<HAS_FUTIMES> symbol, which
 indicates to the C program that the futimes() routine is available.
@@ -1450,11 +1514,11 @@ that pass sprintf-%g-like behaviour tests.  If perl is using
 long doubles, the macro uses the first of the following
 functions that pass Configure's tests: qgcvt, sprintf (if
 Configure knows how to make sprintf format long doubles--see
-sPRIgldbl), gconvert, gcvt, and sprintf (casting to double).  
-The gconvert_preference and gconvert_ld_preference variables   
+sPRIgldbl), gconvert, gcvt, and sprintf (casting to double).
+The gconvert_preference and gconvert_ld_preference variables
 can be used to alter Configure's preferences, for doubles and
-long doubles, respectively.  If present, they contain a       
-space-separated list of one or more of the above function       
+long doubles, respectively.  If present, they contain a
+space-separated list of one or more of the above function
 names in the order they should be tried.
 
 d_Gconvert may be set to override Configure with a platform-
@@ -1586,7 +1650,7 @@ From F<d_gethostprotos.U>:
 
 This variable conditionally defines the C<HAS_GETHOST_PROTOS> symbol,
 which indicates to the C program that <netdb.h> supplies
-prototypes for the various gethost*() functions.  
+prototypes for the various gethost*() functions.
 See also F<netdbtype.U> for probing for various netdb types.
 
 =item C<d_getitimer>
@@ -1681,7 +1745,7 @@ From F<d_getnetprotos.U>:
 
 This variable conditionally defines the C<HAS_GETNET_PROTOS> symbol,
 which indicates to the C program that <netdb.h> supplies
-prototypes for the various getnet*() functions.  
+prototypes for the various getnet*() functions.
 See also F<netdbtype.U> for probing for various netdb types.
 
 =item C<d_getpagsz>
@@ -1695,8 +1759,8 @@ is available to get the system page size.
 
 From F<d_getprotby.U>:
 
-This variable conditionally defines the C<HAS_GETPROTOBYNAME> 
-symbol, which indicates to the C program that the 
+This variable conditionally defines the C<HAS_GETPROTOBYNAME>
+symbol, which indicates to the C program that the
 getprotobyname() routine is available to look up protocols
 by their name.
 
@@ -1704,8 +1768,8 @@ by their name.
 
 From F<d_getprotby.U>:
 
-This variable conditionally defines the C<HAS_GETPROTOBYNUMBER> 
-symbol, which indicates to the C program that the 
+This variable conditionally defines the C<HAS_GETPROTOBYNUMBER>
+symbol, which indicates to the C program that the
 getprotobynumber() routine is available to look up protocols
 by their number.
 
@@ -1724,6 +1788,13 @@ This variable conditionally defines the C<HAS_GETPGID> symbol, which
 indicates to the C program that the getpgid(pid) function
 is available to get the process group id.
 
+=item C<d_getpgrp>
+
+From F<d_getpgrp.U>:
+
+This variable conditionally defines C<HAS_GETPGRP> if getpgrp() is
+available to get the current process group.
+
 =item C<d_getpgrp2>
 
 From F<d_getpgrp2.U>:
@@ -1731,13 +1802,6 @@ From F<d_getpgrp2.U>:
 This variable conditionally defines the HAS_GETPGRP2 symbol, which
 indicates to the C program that the getpgrp2() (as in F<DG/C<UX>>) routine
 is available to get the current process group.
-
-=item C<d_getpgrp>
-
-From F<d_getpgrp.U>:
-
-This variable conditionally defines C<HAS_GETPGRP> if getpgrp() is
-available to get the current process group.
 
 =item C<d_getppid>
 
@@ -1784,7 +1848,7 @@ From F<d_getprotoprotos.U>:
 
 This variable conditionally defines the C<HAS_GETPROTO_PROTOS> symbol,
 which indicates to the C program that <netdb.h> supplies
-prototypes for the various getproto*() functions.  
+prototypes for the various getproto*() functions.
 See also F<netdbtype.U> for probing for various netdb types.
 
 =item C<d_getprpwnam>
@@ -1830,8 +1894,8 @@ routine is available.
 
 From F<d_getsrvby.U>:
 
-This variable conditionally defines the C<HAS_GETSERVBYNAME> 
-symbol, which indicates to the C program that the 
+This variable conditionally defines the C<HAS_GETSERVBYNAME>
+symbol, which indicates to the C program that the
 getservbyname() routine is available to look up services
 by their name.
 
@@ -1839,8 +1903,8 @@ by their name.
 
 From F<d_getsrvby.U>:
 
-This variable conditionally defines the C<HAS_GETSERVBYPORT> 
-symbol, which indicates to the C program that the 
+This variable conditionally defines the C<HAS_GETSERVBYPORT>
+symbol, which indicates to the C program that the
 getservbyport() routine is available to look up services
 by their port.
 
@@ -1881,7 +1945,7 @@ From F<d_getservprotos.U>:
 
 This variable conditionally defines the C<HAS_GETSERV_PROTOS> symbol,
 which indicates to the C program that <netdb.h> supplies
-prototypes for the various getserv*() functions.  
+prototypes for the various getserv*() functions.
 See also F<netdbtype.U> for probing for various netdb types.
 
 =item C<d_getspnam>
@@ -1950,6 +2014,13 @@ From F<d_ilogbl.U>:
 This variable conditionally defines the C<HAS_ILOGBL> symbol, which
 indicates to the C program that the ilogbl() routine is available.
 If scalbnl is also present we can emulate frexpl.
+
+=item C<d_inc_version_list>
+
+From F<inc_version_list.U>:
+
+This variable conditionally defines C<PERL_INC_VERSION_LIST>.
+It is set to undef when C<PERL_INC_VERSION_LIST> is empty.
 
 =item C<d_index>
 
@@ -2031,6 +2102,14 @@ This variable conditionally defines d_ldbl_dig if this system's
 header files provide C<LDBL_DIG>, which is the number of significant
 digits in a long double precision number.
 
+=item C<d_libm_lib_version>
+
+From F<d_libm_lib_version.U>:
+
+This variable conditionally defines the C<LIBM_LIB_VERSION> symbol,
+which indicates to the C program that F<math.h> defines C<_LIB_VERSION>
+being available in libm
+
 =item C<d_link>
 
 From F<d_link.U>:
@@ -2045,6 +2124,13 @@ From F<d_localtime_r.U>:
 This variable conditionally defines the C<HAS_LOCALTIME_R> symbol,
 which indicates to the C program that the localtime_r()
 routine is available.
+
+=item C<d_localtime_r_needs_tzset>
+
+From F<d_localtime_r.U>:
+
+This variable conditionally defines the C<LOCALTIME_R_NEEDS_TZSET>
+symbol, which makes us call tzset before localtime_r()
 
 =item C<d_locconv>
 
@@ -2064,14 +2150,14 @@ available to do file locking.
 
 From F<d_longdbl.U>:
 
-This variable conditionally defines C<HAS_LONG_DOUBLE> if 
+This variable conditionally defines C<HAS_LONG_DOUBLE> if
 the long double type is supported.
 
 =item C<d_longlong>
 
 From F<d_longlong.U>:
 
-This variable conditionally defines C<HAS_LONG_LONG> if 
+This variable conditionally defines C<HAS_LONG_LONG> if
 the long long type is supported.
 
 =item C<d_lseekproto>
@@ -2097,18 +2183,18 @@ From F<d_madvise.U>:
 This variable conditionally defines C<HAS_MADVISE> if madvise() is
 available to map a file into memory.
 
+=item C<d_malloc_good_size>
+
+From F<d_malloc_size.U>:
+
+This symbol, if defined, indicates that the malloc_good_size
+routine is available for use.
+
 =item C<d_malloc_size>
 
 From F<d_malloc_size.U>:
 
 This symbol, if defined, indicates that the malloc_size
-routine is available for use.
-
-=item C<d_malloc_good_size>
-
-From F<d_malloc_good_size.U>:
-
-This symbol, if defined, indicates that the malloc_good_size
 routine is available for use.
 
 =item C<d_mblen>
@@ -2557,6 +2643,13 @@ From F<quadfio.U>:
 This variable conditionally defines the PERL_PRIi64 symbol, which
 indiciates that stdio has a symbol to print 64-bit decimal numbers.
 
+=item C<d_printf_format_null>
+
+From F<d_attribut.U>:
+
+This variable conditionally defines C<PRINTF_FORMAT_NULL_OK>, which
+indicates the C compiler allows printf-like formats to be null.
+
 =item C<d_PRIo64>
 
 From F<quadfio.U>:
@@ -2594,6 +2687,13 @@ From F<d_procselfexe.U>:
 
 Defined if $procselfexe is symlink to the absolute
 pathname of the executing program.
+
+=item C<d_pseudofork>
+
+From F<d_vfork.U>:
+
+This variable conditionally defines the C<HAS_PSEUDOFORK> symbol,
+which indicates that an emulation of the fork routine is available.
 
 =item C<d_pthread_atfork>
 
@@ -2697,6 +2797,13 @@ This variable conditionally defines the C<HAS_RANDOM_R> symbol,
 which indicates to the C program that the random_r()
 routine is available.
 
+=item C<d_readdir>
+
+From F<d_readdir.U>:
+
+This variable conditionally defines C<HAS_READDIR> if readdir() is
+available to read directory entries.
+
 =item C<d_readdir64_r>
 
 From F<d_readdir64_r.U>:
@@ -2704,13 +2811,6 @@ From F<d_readdir64_r.U>:
 This variable conditionally defines the HAS_READDIR64_R symbol,
 which indicates to the C program that the readdir64_r()
 routine is available.
-
-=item C<d_readdir>
-
-From F<d_readdir.U>:
-
-This variable conditionally defines C<HAS_READDIR> if readdir() is
-available to read directory entries.
 
 =item C<d_readdir_r>
 
@@ -3007,6 +3107,13 @@ From F<d_setpgid.U>:
 This variable conditionally defines the C<HAS_SETPGID> symbol if the
 setpgid(pid, gpid) function is available to set process group C<ID>.
 
+=item C<d_setpgrp>
+
+From F<d_setpgrp.U>:
+
+This variable conditionally defines C<HAS_SETPGRP> if setpgrp() is
+available to set the current process group.
+
 =item C<d_setpgrp2>
 
 From F<d_setpgrp2.U>:
@@ -3014,13 +3121,6 @@ From F<d_setpgrp2.U>:
 This variable conditionally defines the HAS_SETPGRP2 symbol, which
 indicates to the C program that the setpgrp2() (as in F<DG/C<UX>>) routine
 is available to set the current process group.
-
-=item C<d_setpgrp>
-
-From F<d_setpgrp.U>:
-
-This variable conditionally defines C<HAS_SETPGRP> if setpgrp() is
-available to set the current process group.
 
 =item C<d_setprior>
 
@@ -3164,7 +3264,7 @@ indicates to the C program that the shmat() routine is available.
 
 From F<d_shmat.U>:
 
-This variable conditionally defines the C<HAS_SHMAT_PROTOTYPE> 
+This variable conditionally defines the C<HAS_SHMAT_PROTOTYPE>
 symbol, which indicates that F<sys/shm.h> has a prototype for
 shmat.
 
@@ -3196,6 +3296,14 @@ From F<d_sigaction.U>:
 This variable conditionally defines the C<HAS_SIGACTION> symbol, which
 indicates that the Vr4 sigaction() routine is available.
 
+=item C<d_signbit>
+
+From F<d_signbit.U>:
+
+This variable conditionally defines the C<HAS_SIGNBIT> symbol, which
+indicates to the C program that the signbit() routine is available
+and safe to use with perl's intern C<NV> type.
+
 =item C<d_sigprocmask>
 
 From F<d_sigprocmask.U>:
@@ -3211,6 +3319,22 @@ From F<d_sigsetjmp.U>:
 This variable conditionally defines the C<HAS_SIGSETJMP> symbol,
 which indicates that the sigsetjmp() routine is available to
 call setjmp() and optionally save the process's signal mask.
+
+=item C<d_sitearch>
+
+From F<sitearch.U>:
+
+This variable conditionally defines C<SITEARCH> to hold the pathname
+of architecture-dependent library files for $package.  If
+$sitearch is the same as $archlib, then this is set to undef.
+
+=item C<d_snprintf>
+
+From F<d_snprintf.U>:
+
+This variable conditionally defines the C<HAS_SNPRINTF> symbol, which
+indicates to the C program that the snprintf () library function
+is available.
 
 =item C<d_sockatmark>
 
@@ -3257,7 +3381,7 @@ indicates to the C program that the socks5_init() routine is available.
 
 =item C<d_sprintf_returns_strlen>
 
-From F<d_sprintf_returns_strlen.U>:
+From F<d_sprintf_len.U>:
 
 This variable defines whether sprintf returns the length of the string
 (as per the C<ANSI> spec). Some C libraries retain compatibility with
@@ -3818,6 +3942,14 @@ This variable conditionally defines the C<HAS_VPRINTF> symbol, which
 indicates to the C program that the vprintf() routine is available
 to printf with a pointer to an argument list.
 
+=item C<d_vsnprintf>
+
+From F<d_snprintf.U>:
+
+This variable conditionally defines the C<HAS_VSNPRINTF> symbol, which
+indicates to the C program that the vsnprintf () library function
+is available.
+
 =item C<d_wait4>
 
 From F<d_wait4.U>:
@@ -3972,9 +4104,13 @@ link dynamically into the package.  It is used by Makefile.
 
 =back
 
+=cut
+
 =head2 e
 
 =over 4
+
+=cut
 
 =item C<eagain>
 
@@ -4098,8 +4234,15 @@ From F<Extensions.U>:
 
 This variable holds a list of all extension files (both C<XS> and
 non-xs linked into the package.  It is propagated to F<Config.pm>
-and is typically used to test whether a particular extesion 
+and is typically used to test whether a particular extesion
 is available.
+
+=item C<extern_C>
+
+From F<Csym.U>:
+
+C<ANSI> C requires C<extern> where C++ requires 'extern C<C>'. This
+variable can be used in Configure to do the right thing.
 
 =item C<extras>
 
@@ -4109,9 +4252,13 @@ This variable holds a list of extra modules to install.
 
 =back
 
+=cut
+
 =head2 f
 
 =over 4
+
+=cut
 
 =item C<fflushall>
 
@@ -4163,7 +4310,7 @@ This variable contains the size of a fpostype in bytes.
 
 From F<fpostype.U>:
 
-This variable defines Fpos_t to be something like fpos_t, long, 
+This variable defines Fpos_t to be something like fpos_t, long,
 uint, or whatever type is used to declare file positions in libc.
 
 =item C<freetype>
@@ -4212,9 +4359,13 @@ F<sed.>
 
 =back
 
+=cut
+
 =head2 g
 
 =over 4
+
+=cut
 
 =item C<gccansipedantic>
 
@@ -4502,7 +4653,7 @@ command, in which case this variable is unset.
 
 From F<groupstype.U>:
 
-This variable defines Groups_t to be something like gid_t, int, 
+This variable defines Groups_t to be something like gid_t, int,
 ushort, or whatever type is used for the second argument to
 getgroups() and setgroups().  Usually, this is the same as
 gidtype (gid_t), but sometimes it isn't.
@@ -4517,9 +4668,13 @@ the value is reset to a plain C<gzip> and is not useful.
 
 =back
 
+=cut
+
 =head2 h
 
 =over 4
+
+=cut
 
 =item C<h_fcntl>
 
@@ -4587,9 +4742,13 @@ expanded at configuration time, for convenient use in makefiles.
 
 =back
 
+=cut
+
 =head2 i
 
 =over 4
+
+=cut
 
 =item C<i16size>
 
@@ -5259,12 +5418,17 @@ default one.  See C<INSTALL> for how this works.  The versioned
 site_perl directory was introduced in 5.005, so that is the
 lowest possible value.
 
+This list includes architecture-dependent directories back to
+version $api_versionstring (e.g. 5.5.640) and
+architecture-independent directories all the way back to
+5.005.
+
 =item C<inc_version_list_init>
 
 From F<inc_version_list.U>:
 
 This variable holds the same list as inc_version_list, but
-each item is enclosed in double quotes and separated by commas, 
+each item is enclosed in double quotes and separated by commas,
 suitable for use in the C<PERL_INC_VERSION_LIST> initialization.
 
 =item C<incpath>
@@ -5281,6 +5445,17 @@ From F<Loc.U>:
 
 This variable is defined but not used by Configure.
 The value is a plain '' and is not useful.
+
+=item C<initialinstalllocation>
+
+From F<bin.U>:
+
+When userelocatableinc is true, this variable holds the location
+that make install should copy the perl binary to, with all the
+run-time relocatable paths calculated from this at install time.
+When used, it is initialised to the original value of binexp, and
+then binexp is set to F<.../>, as the other binaries are found
+relative to the perl binary.
 
 =item C<installarchlib>
 
@@ -5302,16 +5477,16 @@ be used in your makefiles for maximum portability.
 
 From F<html1dir.U>:
 
-This variable is really the same as html1direxp, unless you are 
-using a different installprefix.  For extra portability, you 
+This variable is really the same as html1direxp, unless you are
+using a different installprefix.  For extra portability, you
 should only use this variable within your makefiles.
 
 =item C<installhtml3dir>
 
 From F<html3dir.U>:
 
-This variable is really the same as html3direxp, unless you are 
-using a different installprefix.  For extra portability, you 
+This variable is really the same as html3direxp, unless you are
+using a different installprefix.  For extra portability, you
 should only use this variable within your makefiles.
 
 =item C<installman1dir>
@@ -5336,7 +5511,7 @@ portability, you should only use this variable within your makefiles.
 
 From F<installprefix.U>:
 
-This variable holds the name of the directory below which 
+This variable holds the name of the directory below which
 "make install" will install the package.  For most users, this
 is the same as prefix.  However, it is useful for
 installing the software into a different (usually temporary)
@@ -5565,7 +5740,7 @@ C<test -L>.
 From F<perlxvf.U>:
 
 This variable contains the format string used for printing
-a Perl C<IV> as a signed decimal integer. 
+a Perl C<IV> as a signed decimal integer.
 
 =item C<ivsize>
 
@@ -5581,15 +5756,19 @@ This variable contains the C type used for Perl's C<IV>.
 
 =back
 
+=cut
+
 =head2 k
 
 =over 4
+
+=cut
 
 =item C<known_extensions>
 
 From F<Extensions.U>:
 
-This variable holds a list of all C<XS> extensions included in 
+This variable holds a list of all C<XS> extensions included in
 the package.
 
 =item C<ksh>
@@ -5601,9 +5780,13 @@ The value is a plain '' and is not useful.
 
 =back
 
+=cut
+
 =head2 l
 
 =over 4
+
+=cut
 
 =item C<ld>
 
@@ -5767,7 +5950,7 @@ the value is reset to a plain C<ln> and is not useful.
 
 From F<lns.U>:
 
-This variable holds the name of the command to make 
+This variable holds the name of the command to make
 symbolic links (if they are supported).  It can be used
 in the Makefile. It is either C<ln -s> or C<ln>
 
@@ -5847,7 +6030,7 @@ the value is reset to a plain C<ls> and is not useful.
 
 From F<lseektype.U>:
 
-This variable defines lseektype to be something like off_t, long, 
+This variable defines lseektype to be something like off_t, long,
 or whatever type is used to declare lseek offset's type in the
 kernel (which also appears to be lseek's return type).
 
@@ -5855,15 +6038,47 @@ kernel (which also appears to be lseek's return type).
 
 From F<lseektype.U>:
 
-This variable defines lseektype to be something like off_t, long, 
+This variable defines lseektype to be something like off_t, long,
 or whatever type is used to declare lseek offset's type in the
 kernel (which also appears to be lseek's return type).
 
 =back
 
+=cut
+
 =head2 m
 
 =over 4
+
+=cut
+
+=item C<mad>
+
+From F<mad.U>:
+
+This variable indicates that the Misc Attribute Definition code is to
+be compiled.
+
+=item C<madlyh>
+
+From F<mad.U>:
+
+If the Misc Attribute Decoration is to be compiled, this variable is
+set to the name of the extra header files to be used, else it is ''
+
+=item C<madlyobj>
+
+From F<mad.U>:
+
+If the Misc Attribute Decoration is to be compiled, this variable is
+set to the name of the extra object files to be used, else it is ''
+
+=item C<madlysrc>
+
+From F<mad.U>:
+
+If the Misc Attribute Decoration is to be compiled, this variable is
+set to the name of the extra C source files to be used, else it is ''
 
 =item C<mail>
 
@@ -5901,7 +6116,7 @@ make_set_make=C<#>		# If your make program handles this for you,
 make_set_make=C<MAKE=$make>	# if it doesn't.
 
 This uses a comment character to distinguish a
-C<set> value (from a previous F<config.sh> or Configure C<-D> option)
+C<set> value (from a previous F<config.sh> or Configure -D option)
 from an uncomputed value.
 
 =item C<mallocobj>
@@ -5978,9 +6193,13 @@ See man3dir.
 
 =back
 
+=cut
+
 =head2 M
 
 =over 4
+
+=cut
 
 =item C<Mcc>
 
@@ -6028,8 +6247,8 @@ It can be C<void *> or C<caddr_t>.
 
 From F<modetype.U>:
 
-This variable defines modetype to be something like mode_t, 
-int, unsigned short, or whatever type is used to declare file 
+This variable defines modetype to be something like mode_t,
+int, unsigned short, or whatever type is used to declare file
 modes for system calls.
 
 =item C<more>
@@ -6091,15 +6310,19 @@ whole thing is then lower-cased.
 
 =back
 
+=cut
+
 =head2 n
 
 =over 4
+
+=cut
 
 =item C<n>
 
 From F<n.U>:
 
-This variable contains the C<-n> flag if that is what causes the echo
+This variable contains the -n flag if that is what causes the echo
 command to suppress newline.  Otherwise it is null.  Correct usage is
 $echo $n "prompt for a question: $c".
 
@@ -6251,9 +6474,13 @@ This variable contains the C type used for Perl's C<NV>.
 
 =back
 
+=cut
+
 =head2 o
 
 =over 4
+
+=cut
 
 =item C<o_nonblock>
 
@@ -6331,9 +6558,13 @@ for the next run through Configure.
 
 =back
 
+=cut
+
 =head2 p
 
 =over 4
+
+=cut
 
 =item C<package>
 
@@ -6375,6 +6606,13 @@ From F<Unix.U>:
 This is an old synonym for p_ in F<Head.U>, the character
 used to separate elements in the command shell search C<PATH>.
 
+=item C<perl>
+
+From F<Loc.U>:
+
+This variable is defined but not used by Configure.
+The value is a plain '' and is not useful.
+
 =item C<perl5>
 
 From F<perl5.U>:
@@ -6383,12 +6621,60 @@ This variable contains the full path (if any) to a previously
 installed F<perl5.005> or later suitable for running the script
 to determine inc_version_list.
 
-=item C<perl>
+=back
 
-From F<Loc.U>:
+=cut
 
-This variable is defined but not used by Configure.
-The value is a plain '' and is not useful.
+=head2 P
+
+=over 4
+
+=cut
+
+=item C<PERL_API_REVISION>
+
+From F<patchlevel.h>:
+
+This number describes the earliest compatible C<PERL_REVISION> of
+Perl (C<compatibility> here being defined as sufficient F<binary/C<API>>
+compatibility to run C<XS> code built with the older version).
+Normally this does not change across maintenance releases.
+Please read the comment in F<patchlevel.h>.
+
+=item C<PERL_API_SUBVERSION>
+
+From F<patchlevel.h>:
+
+This number describes the earliest compatible C<PERL_SUBVERSION> of
+Perl (C<compatibility> here being defined as sufficient F<binary/C<API>>
+compatibility to run C<XS> code built with the older version).
+Normally this does not change across maintenance releases.
+Please read the comment in F<patchlevel.h>.
+
+=item C<PERL_API_VERSION>
+
+From F<patchlevel.h>:
+
+This number describes the earliest compatible C<PERL_VERSION> of
+Perl (C<compatibility> here being defined as sufficient F<binary/C<API>>
+compatibility to run C<XS> code built with the older version).
+Normally this does not change across maintenance releases.
+Please read the comment in F<patchlevel.h>.
+
+=item C<PERL_CONFIG_SH>
+
+From F<Oldsyms.U>:
+
+This is set to C<true> in F<config.sh> so that a shell script
+sourcing F<config.sh> can tell if it has been sourced already.
+
+=item C<PERL_PATCHLEVEL>
+
+From F<Oldsyms.U>:
+
+This symbol reflects the patchlevel, if available. Will usually
+come from the F<.patch> file, which is available when the perl
+source tree was fetched with rsync.
 
 =item C<perl_patchlevel>
 
@@ -6400,12 +6686,6 @@ is used to maintain the patches; currently Perforce.
 It does not correlate with the Perl version numbers or
 the maintenance versus development dichotomy except
 by also being increasing.
-
-=back
-
-=head2 P
-
-=over 4
 
 =item C<PERL_REVISION>
 
@@ -6478,7 +6758,7 @@ there already.
 
 From F<pidtype.U>:
 
-This variable defines C<PIDTYPE> to be something like pid_t, int, 
+This variable defines C<PIDTYPE> to be something like pid_t, int,
 ushort, or whatever type is used to declare process ids in the kernel.
 
 =item C<plibpth>
@@ -6560,9 +6840,13 @@ indicates to the C program how many bytes there are in a pointer.
 
 =back
 
+=cut
+
 =head2 q
 
 =over 4
+
+=cut
 
 =item C<quadkind>
 
@@ -6575,14 +6859,18 @@ This variable, if defined, encodes the type of a quad:
 
 From F<quadtype.U>:
 
-This variable defines Quad_t to be something like long, int, 
+This variable defines Quad_t to be something like long, int,
 long long, int64_t, or whatever type is used for 64-bit integers.
 
 =back
 
+=cut
+
 =head2 r
 
 =over 4
+
+=cut
 
 =item C<randbits>
 
@@ -6666,6 +6954,13 @@ This variable is used internally by Configure to determine the
 full pathname (if any) of the rm program.  After Configure runs,
 the value is reset to a plain C<rm> and is not useful.
 
+=item C<rm_try>
+
+From F<Unix.U>:
+
+This is a cleanup variable for try test programs.
+Internal Configure use only.
+
 =item C<rmail>
 
 From F<Loc.U>:
@@ -6692,9 +6987,13 @@ of usenm and the flags on the Configure command line.
 
 =back
 
+=cut
+
 =head2 s
 
 =over 4
+
+=cut
 
 =item C<sched_yield>
 
@@ -6751,7 +7050,7 @@ From F<selecttype.U>:
 
 This variable holds the type used for the 2nd, 3rd, and 4th
 arguments to select.  Usually, this is C<fd_set *>, if C<HAS_FD_SET>
-is defined, and C<int *> otherwise.  This is only useful if you 
+is defined, and C<int *> otherwise.  This is only useful if you
 have select(), naturally.
 
 =item C<sendmail>
@@ -6833,9 +7132,9 @@ on this system to execute Bourne shell scripts.  Usually, this will be
 F</bin/sh>, though it's possible that some systems will have F</bin/ksh>,
 F</bin/pdksh>, F</bin/ash>, F</bin/bash>, or even something such as
 D:F</bin/sh.exe>.
-This unit comes before F<Options.U>, so you can't set sh with a C<-D>
+This unit comes before F<Options.U>, so you can't set sh with a -D
 option, though you can override this (and startsh)
-with C<-O -Dsh=F</bin/whatever> -Dstartsh=whatever>
+with -O -Dsh=F</bin/whatever> -Dstartsh=whatever
 
 =item C<shar>
 
@@ -6870,7 +7169,7 @@ indicates to the C program how many bytes there are in a short.
 From F<libperl.U>:
 
 If the user builds a shared F<libperl.so>, then we need to tell the
-C<perl> executable where it will be able to find the installed F<libperl.so>. 
+C<perl> executable where it will be able to find the installed F<libperl.so>.
 One way to do this on some systems is to set the environment variable
 C<LD_RUN_PATH> to the directory that will be the final location of the
 shared F<libperl.so>.  The makefile can use this with something like
@@ -6911,8 +7210,8 @@ This is currently not used, sig_name_init is used instead.
 From F<sig_name.U>:
 
 This variable holds the signal names, enclosed in double quotes and
-separated by commas, suitable for use in the C<SIG_NAME> definition 
-below.  A C<ZERO> is prepended to the list, and the list is 
+separated by commas, suitable for use in the C<SIG_NAME> definition
+below.  A C<ZERO> is prepended to the list, and the list is
 terminated with a plain 0.  The leading C<SIG> in signal names
 is removed. See sig_num.
 
@@ -6931,8 +7230,8 @@ This is currently not used, sig_num_init is used instead.
 From F<sig_name.U>:
 
 This variable holds the signal numbers, enclosed in double quotes and
-separated by commas, suitable for use in the C<SIG_NUM> definition 
-below.  A C<ZERO> is prepended to the list, and the list is 
+separated by commas, suitable for use in the C<SIG_NUM> definition
+below.  A C<ZERO> is prepended to the list, and the list is
 terminated with a plain 0.
 
 =item C<sig_size>
@@ -7149,8 +7448,8 @@ This variable contains the size of a sizetype in bytes.
 
 From F<sizetype.U>:
 
-This variable defines sizetype to be something like size_t, 
-unsigned long, or whatever type is used to declare length 
+This variable defines sizetype to be something like size_t,
+unsigned long, or whatever type is used to declare length
 parameters for string functions.
 
 =item C<sleep>
@@ -7215,7 +7514,7 @@ sentences.
 From F<spitshell.U>:
 
 This variable contains the command necessary to spit out a runnable
-shell on this system.  It is either cat or a grep C<-v> for # comments.
+shell on this system.  It is either cat or a grep -v for # comments.
 
 =item C<sPRId64>
 
@@ -7346,8 +7645,8 @@ format long doubles (format C<f>) for input.
 
 From F<ssizetype.U>:
 
-This variable defines ssizetype to be something like ssize_t, 
-long or int.  It is used by functions that return a count 
+This variable defines ssizetype to be something like ssize_t,
+long or int.  It is used by functions that return a count
 of bytes or an error condition.  It must be a signed type.
 We will pick a type such that sizeof(SSize_t) == sizeof(Size_t).
 
@@ -7478,9 +7777,13 @@ for unix commands (section 1 of the manual usually). See mansrc.
 
 =back
 
+=cut
+
 =head2 t
 
 =over 4
+
+=cut
 
 =item C<tail>
 
@@ -7600,9 +7903,13 @@ is defined.
 
 =back
 
+=cut
+
 =head2 u
 
 =over 4
+
+=cut
 
 =item C<u16size>
 
@@ -7675,7 +7982,7 @@ This variable contains the size of a uidtype in bytes.
 
 From F<uidtype.U>:
 
-This variable defines Uid_t to be something like uid_t, int, 
+This variable defines Uid_t to be something like uid_t, int,
 ushort, or whatever type is used to declare user ids in the kernel.
 
 =item C<uname>
@@ -7708,7 +8015,7 @@ From F<usethreads.U>:
 
 This variable conditionally defines the USE_5005THREADS symbol,
 and indicates that Perl should be built to use the 5.005-based
-threading implementation.
+threading implementation. Only valid up to 5.8.x.
 
 =item C<use64bitall>
 
@@ -7856,6 +8163,16 @@ _r versions of library functions.  This is only potentially
 meaningful if usethreads is set and is very experimental, it is
 not even prompted for.
 
+=item C<userelocatableinc>
+
+From F<bin.U>:
+
+This variable is set to true to indicate that perl should relocate
+@C<INC> entries at runtime based on the path to the perl binary.
+Any @C<INC> paths starting F<.../> are relocated relative to the directory
+containing the perl binary, and a logical cleanup of the path is then
+made around the join point (removing F<dir/../> pairs)
+
 =item C<usesfio>
 
 From F<d_sfio.U>:
@@ -7872,6 +8189,14 @@ From F<libperl.U>:
 
 This variable is set to C<true> if the user wishes
 to build a shared libperl, and C<false> otherwise.
+
+=item C<usesitecustomize>
+
+From F<d_sitecustomize.U>:
+
+This variable is set to true when the user requires a mechanism that
+allows the sysadmin to add entries to @C<INC> at runtime.  This variable
+being set, makes perl run F<$F<sitelib/sitecustomize.pl>> at startup.
 
 =item C<usesocks>
 
@@ -7921,7 +8246,7 @@ The value is a plain '' and is not useful.
 From F<perlxvf.U>:
 
 This variable contains the format string used for printing
-a Perl C<UV> as an unsigned octal integer. 
+a Perl C<UV> as an unsigned octal integer.
 
 =item C<uvsize>
 
@@ -7940,7 +8265,7 @@ This variable contains the C type used for Perl's C<UV>.
 From F<perlxvf.U>:
 
 This variable contains the format string used for printing
-a Perl C<UV> as an unsigned decimal integer. 
+a Perl C<UV> as an unsigned decimal integer.
 
 =item C<uvxformat>
 
@@ -7958,20 +8283,24 @@ a Perl C<UV> as an unsigned hexadecimal integer in uppercase C<ABCDEF>.
 
 =back
 
+=cut
+
 =head2 v
 
 =over 4
+
+=cut
 
 =item C<vendorarch>
 
 From F<vendorarch.U>:
 
 This variable contains the value of the C<PERL_VENDORARCH> symbol.
-It may have a F<~> on the front. 
+It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place their own
 architecture-dependent modules and extensions in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorarchexp>
@@ -7990,7 +8319,7 @@ It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place additional
 binaries in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorbinexp>
@@ -8004,12 +8333,12 @@ may use it directly in Makefiles or shell scripts.
 
 From F<vendorhtml1dir.U>:
 
-This variable contains the name of the directory for html 
+This variable contains the name of the directory for html
 pages.  It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place their own
 html pages in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorhtml1direxp>
@@ -8023,12 +8352,12 @@ may use it directly in Makefiles or shell scripts.
 
 From F<vendorhtml3dir.U>:
 
-This variable contains the name of the directory for html 
+This variable contains the name of the directory for html
 library pages.  It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place their own
 html pages for modules and extensions in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorhtml3direxp>
@@ -8047,7 +8376,7 @@ which is the name of the private library for this package.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place their own
 modules in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorlib_stem>
@@ -8069,12 +8398,12 @@ may use it directly in Makefiles or shell scripts.
 
 From F<vendorman1dir.U>:
 
-This variable contains the name of the directory for man1 
+This variable contains the name of the directory for man1
 pages.  It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place their own
 man1 pages in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorman1direxp>
@@ -8088,12 +8417,12 @@ may use it directly in Makefiles or shell scripts.
 
 From F<vendorman3dir.U>:
 
-This variable contains the name of the directory for man3 
+This variable contains the name of the directory for man3
 pages.  It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place their own
 man3 pages in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorman3direxp>
@@ -8127,7 +8456,7 @@ It may have a F<~> on the front.
 The standard distribution will put nothing in this directory.
 Vendors who distribute perl may wish to place additional
 executable scripts in this directory with
-MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor 
+MakeMaker F<Makefile.PL> C<INSTALLDIRS>=vendor
 or equivalent.  See C<INSTALL> for details.
 
 =item C<vendorscriptexp>
@@ -8152,12 +8481,12 @@ filesystem dependent.
 From F<patchlevel.U>:
 
 This is a string combining version, subversion and
-perl_patchlevel (if perl_patchlevel is non-zero).  
-It is typically something like 
+perl_patchlevel (if perl_patchlevel is non-zero).
+It is typically something like
 'version 7 subversion 1'  or
 'version 7 subversion 1 patchlevel 11224'
 It is computed here to avoid duplication of code in F<myconfig.SH>
-and F<lib/Config.pm>. 
+and F<lib/Config.pm>.
 
 =item C<versiononly>
 
@@ -8191,9 +8520,13 @@ compiler.  See C<VOIDFLAGS> for more info.
 
 =back
 
+=cut
+
 =head2 x
 
 =over 4
+
+=cut
 
 =item C<xlibpth>
 
@@ -8205,9 +8538,13 @@ libraries on this platform, for example C<CPU>-specific libraries
 
 =back
 
+=cut
+
 =head2 y
 
 =over 4
+
+=cut
 
 =item C<yacc>
 
@@ -8225,9 +8562,13 @@ user.  It is up to the Makefile to use this.
 
 =back
 
+=cut
+
 =head2 z
 
 =over 4
+
+=cut
 
 =item C<zcat>
 

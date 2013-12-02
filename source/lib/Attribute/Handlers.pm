@@ -2,7 +2,9 @@ package Attribute::Handlers;
 use 5.006;
 use Carp;
 use warnings;
-$VERSION = '0.78_02';
+use strict;
+use vars qw($VERSION $AUTOLOAD);
+$VERSION = '0.88'; # remember to update version in POD!
 # $DB::single=1;
 
 my %symcache;
@@ -10,8 +12,10 @@ sub findsym {
 	my ($pkg, $ref, $type) = @_;
 	return $symcache{$pkg,$ref} if $symcache{$pkg,$ref};
 	$type ||= ref($ref);
-	my $found;
+	no strict 'refs';
         foreach my $sym ( values %{$pkg."::"} ) {
+	    use strict;
+	    next unless ref ( \$sym ) eq 'GLOB';
             return $symcache{$pkg,$ref} = \$sym
 		if *{$sym}{$type} && *{$sym}{$type} == $ref;
 	}
@@ -60,7 +64,7 @@ sub import {
 		my $args = $3||'()';
 		_usage_AH_ $class unless $attr =~ $qual_id
 		                 && $tieclass =~ $qual_id
-		                 && eval "use base $tieclass; 1";
+		                 && eval "use base q\0$tieclass\0; 1";
 	        if ($tieclass->isa('Exporter')) {
 		    local $Exporter::ExportLevel = 2;
 		    $tieclass->import(eval $args);
@@ -86,6 +90,29 @@ sub import {
         }
     }
 }
+
+# On older perls, code attribute handlers run before the sub gets placed
+# in its package.  Since the :ATTR handlers need to know the name of the
+# sub they're applied to, the name lookup (via findsym) needs to be
+# delayed: we do it immediately before we might need to find attribute
+# handlers from their name.  However, on newer perls (which fix some
+# problems relating to attribute application), a sub gets placed in its
+# package before its attributes are processed.  In this case, the
+# delayed name lookup might be too late, because the sub we're looking
+# for might have already been replaced.  So we need to detect which way
+# round this perl does things, and time the name lookup accordingly.
+BEGIN {
+	my $delayed;
+	sub Attribute::Handlers::_TEST_::MODIFY_CODE_ATTRIBUTES {
+		$delayed = \&Attribute::Handlers::_TEST_::t != $_[1];
+		return ();
+	}
+	sub Attribute::Handlers::_TEST_::t :T { }
+	*_delayed_name_resolution = sub() { $delayed };
+	undef &Attribute::Handlers::_TEST_::MODIFY_CODE_ATTRIBUTES;
+	undef &Attribute::Handlers::_TEST_::t;
+}
+
 sub _resolve_lastattr {
 	return unless $lastattr{ref};
 	my $sym = findsym @lastattr{'pkg','ref'}
@@ -94,29 +121,31 @@ sub _resolve_lastattr {
 	warn "Declaration of $name attribute in package $lastattr{pkg} may clash with future reserved word\n"
 		if $^W and $name !~ /[A-Z]/;
 	foreach ( @{$validtype{$lastattr{type}}} ) {
+		no strict 'refs';
 		*{"$lastattr{pkg}::_ATTR_${_}_${name}"} = $lastattr{ref};
 	}
 	%lastattr = ();
 }
 
 sub AUTOLOAD {
+	return if $AUTOLOAD =~ /::DESTROY$/;
 	my ($class) = $AUTOLOAD =~ m/(.*)::/g;
 	$AUTOLOAD =~ m/_ATTR_(.*?)_(.*)/ or
 	    croak "Can't locate class method '$AUTOLOAD' via package '$class'";
 	croak "Attribute handler '$2' doesn't handle $1 attributes";
 }
 
-sub DESTROY {}
-
 my $builtin = qr/lvalue|method|locked|unique|shared/;
 
 sub _gen_handler_AH_() {
 	return sub {
-	    _resolve_lastattr;
+	    _resolve_lastattr if _delayed_name_resolution;
 	    my ($pkg, $ref, @attrs) = @_;
+	    my (undef, $filename, $linenum) = caller 2;
 	    foreach (@attrs) {
 		my ($attr, $data) = /^([a-z_]\w*)(?:[(](.*)[)])?$/is or next;
 		if ($attr eq 'ATTR') {
+			no strict 'refs';
 			$data ||= "ANY";
 			$raw{$ref} = $data =~ s/\s*,?\s*RAWDATA\s*,?\s*//;
 			$phase{$ref}{BEGIN} = 1
@@ -135,13 +164,14 @@ sub _gen_handler_AH_() {
 			croak "Bad attribute type: ATTR($data)"
 				unless $validtype{$data};
 			%lastattr=(pkg=>$pkg,ref=>$ref,type=>$data);
+			_resolve_lastattr unless _delayed_name_resolution;
 		}
 		else {
 			my $type = ref $ref;
 			my $handler = $pkg->can("_ATTR_${type}_${attr}");
 			next unless $handler;
 		        my $decl = [$pkg, $ref, $attr, $data,
-				    $raw{$handler}, $phase{$handler}];
+				    $raw{$handler}, $phase{$handler}, $filename, $linenum];
 			foreach my $gphase (@global_phases) {
 			    _apply_handler_AH_($decl,$gphase)
 				if $global_phases{$gphase} <= $global_phase;
@@ -165,14 +195,17 @@ sub _gen_handler_AH_() {
 	}
 }
 
-*{"Attribute::Handlers::UNIVERSAL::MODIFY_${_}_ATTRIBUTES"} =
-       _gen_handler_AH_ foreach @{$validtype{ANY}};
+{
+    no strict 'refs';
+    *{"Attribute::Handlers::UNIVERSAL::MODIFY_${_}_ATTRIBUTES"} =
+	_gen_handler_AH_ foreach @{$validtype{ANY}};
+}
 push @UNIVERSAL::ISA, 'Attribute::Handlers::UNIVERSAL'
        unless grep /^Attribute::Handlers::UNIVERSAL$/, @UNIVERSAL::ISA;
 
 sub _apply_handler_AH_ {
 	my ($declaration, $phase) = @_;
-	my ($pkg, $ref, $attr, $data, $raw, $handlerphase) = @$declaration;
+	my ($pkg, $ref, $attr, $data, $raw, $handlerphase, $filename, $linenum) = @$declaration;
 	return unless $handlerphase->{$phase};
 	# print STDERR "Handling $attr on $ref in $phase with [$data]\n";
 	my $type = ref $ref;
@@ -180,16 +213,21 @@ sub _apply_handler_AH_ {
 	my $sym = findsym($pkg, $ref);
 	$sym ||= $type eq 'CODE' ? 'ANON' : 'LEXICAL';
 	no warnings;
-	my $evaled = !$raw && eval("package $pkg; no warnings;
-				    local \$SIG{__WARN__}=sub{die}; [$data]");
-	$data = ($evaled && $data =~ /^\s*\[/)  ? [$evaled]
-	      : ($evaled)			? $evaled
-	      :					  [$data];
+	if (!$raw && defined($data)) {
+	    if ($data ne '') {
+		my $evaled = eval("package $pkg; no warnings; no strict;
+				   local \$SIG{__WARN__}=sub{die}; [$data]");
+		$data = $evaled unless $@;
+	    }
+	    else { $data = undef }
+	}
 	$pkg->$handler($sym,
 		       (ref $sym eq 'GLOB' ? *{$sym}{ref $ref}||$ref : $ref),
 		       $attr,
-		       (@$data>1? $data : $data->[0]),
+		       $data,
 		       $phase,
+		       $filename,
+		       $linenum,
 		      );
 	return 1;
 }
@@ -197,18 +235,27 @@ sub _apply_handler_AH_ {
 {
         no warnings 'void';
         CHECK {
-               $global_phase++;
-               _resolve_lastattr;
-               _apply_handler_AH_($_,'CHECK') foreach @declarations;
+                $global_phase++;
+                _resolve_lastattr if _delayed_name_resolution;
+                foreach my $decl (@declarations) {
+                        _apply_handler_AH_($decl, 'CHECK');
+                }
         }
 
         INIT {
                 $global_phase++;
-                _apply_handler_AH_($_,'INIT') foreach @declarations
+                foreach my $decl (@declarations) {
+                        _apply_handler_AH_($decl, 'INIT');
+                }
         }
 }
 
-END { $global_phase++; _apply_handler_AH_($_,'END') foreach @declarations }
+END {
+        $global_phase++;
+        foreach my $decl (@declarations) {
+                _apply_handler_AH_($decl, 'END');
+        }
+}
 
 1;
 __END__
@@ -219,13 +266,13 @@ Attribute::Handlers - Simpler definition of attribute handlers
 
 =head1 VERSION
 
-This document describes version 0.78 of Attribute::Handlers,
-released October 5, 2002.
+This document describes version 0.88 of Attribute::Handlers,
+released April 5, 2010.
 
 =head1 SYNOPSIS
 
 	package MyClass;
-	require v5.6.0;
+	require 5.006;
 	use Attribute::Handlers;
 	no warnings 'redefine';
 
@@ -291,25 +338,27 @@ and subroutines subsequently defined in that package, or in packages
 derived from that package may be given attributes with the same names as
 the attribute handler subroutines, which will then be called in one of
 the compilation phases (i.e. in a C<BEGIN>, C<CHECK>, C<INIT>, or C<END>
-block).
+block). (C<UNITCHECK> blocks don't correspond to a global compilation
+phase, so they can't be specified here.)
 
 To create a handler, define it as a subroutine with the same name as
 the desired attribute, and declare the subroutine itself with the  
 attribute C<:ATTR>. For example:
 
-	package LoudDecl;
-	use Attribute::Handlers;
+    package LoudDecl;
+    use Attribute::Handlers;
 
-	sub Loud :ATTR {
-		my ($package, $symbol, $referent, $attr, $data, $phase) = @_;
-		print STDERR
-			ref($referent), " ",
-			*{$symbol}{NAME}, " ",
-			"($referent) ", "was just declared ",
-			"and ascribed the ${attr} attribute ",
-			"with data ($data)\n",
-			"in phase $phase\n";
-	}
+    sub Loud :ATTR {
+	my ($package, $symbol, $referent, $attr, $data, $phase, $filename, $linenum) = @_;
+	print STDERR
+	    ref($referent), " ",
+	    *{$symbol}{NAME}, " ",
+	    "($referent) ", "was just declared ",
+	    "and ascribed the ${attr} attribute ",
+	    "with data ($data)\n",
+	    "in phase $phase\n",
+	    "in file $filename at line $linenum\n";
+    }
 
 This creates a handler for the attribute C<:Loud> in the class LoudDecl.
 Thereafter, any subroutine declared with a C<:Loud> attribute in the class
@@ -345,7 +394,15 @@ any data associated with that attribute;
 
 =item [5]
 
-the name of the phase in which the handler is being invoked.
+the name of the phase in which the handler is being invoked;
+
+=item [6]
+
+the filename in which the handler is being invoked;
+
+=item [7]
+
+the line number in this file.
 
 =back
 
@@ -370,40 +427,46 @@ which it belongs, so the symbol table argument (C<$_[1]>) is set to the
 string C<'LEXICAL'> in that case. Likewise, ascribing an attribute to
 an anonymous subroutine results in a symbol table argument of C<'ANON'>.
 
-The data argument passes in the value (if any) associated with the 
+The data argument passes in the value (if any) associated with the
 attribute. For example, if C<&foo> had been declared:
 
         sub foo :Loud("turn it up to 11, man!") {...}
 
-then the string C<"turn it up to 11, man!"> would be passed as the
-last argument.
+then a reference to an array containing the string
+C<"turn it up to 11, man!"> would be passed as the last argument.
 
 Attribute::Handlers makes strenuous efforts to convert
 the data argument (C<$_[4]>) to a useable form before passing it to
 the handler (but see L<"Non-interpretive attribute handlers">).
+If those efforts succeed, the interpreted data is passed in an array
+reference; if they fail, the raw data is passed as a string.
 For example, all of these:
 
-        sub foo :Loud(till=>ears=>are=>bleeding) {...}
-        sub foo :Loud(['till','ears','are','bleeding']) {...}
-        sub foo :Loud(qw/till ears are bleeding/) {...}
-        sub foo :Loud(qw/my, ears, are, bleeding/) {...}
-        sub foo :Loud(till,ears,are,bleeding) {...}
+    sub foo :Loud(till=>ears=>are=>bleeding) {...}
+    sub foo :Loud(qw/till ears are bleeding/) {...}
+    sub foo :Loud(qw/my, ears, are, bleeding/) {...}
+    sub foo :Loud(till,ears,are,bleeding) {...}
 
 causes it to pass C<['till','ears','are','bleeding']> as the handler's
-data argument. However, if the data can't be parsed as valid Perl, then
+data argument. While:
+
+    sub foo :Loud(['till','ears','are','bleeding']) {...}
+
+causes it to pass C<[ ['till','ears','are','bleeding'] ]>; the array
+reference specified in the data being passed inside the standard
+array reference indicating successful interpretation.
+
+However, if the data can't be parsed as valid Perl, then
 it is passed as an uninterpreted string. For example:
 
-        sub foo :Loud(my,ears,are,bleeding) {...}
-        sub foo :Loud(qw/my ears are bleeding) {...}
+    sub foo :Loud(my,ears,are,bleeding) {...}
+    sub foo :Loud(qw/my ears are bleeding) {...}
 
-cause the strings C<'my,ears,are,bleeding'> and C<'qw/my ears are bleeding'>
-respectively to be passed as the data argument.
+cause the strings C<'my,ears,are,bleeding'> and
+C<'qw/my ears are bleeding'> respectively to be passed as the
+data argument.
 
-If the attribute has only a single associated scalar data value, that value is
-passed as a scalar. If multiple values are associated, they are passed as an
-array reference. If no value is associated with the attribute, C<undef> is
-passed.
-
+If no value is associated with the attribute, C<undef> is passed.
 
 =head2 Typed lexicals
 
@@ -655,7 +718,7 @@ module, then the following code:
 
         sub fn :Ugly(sister) :Omni('po',tent()) {...}
         my @arr :Good :Omni(s/cie/nt/);
-        my %hsh :Good(q/bye) :Omni(q/bus/);
+        my %hsh :Good(q/bye/) :Omni(q/bus/);
 
 
 would cause the following handlers to be invoked:
@@ -780,6 +843,24 @@ Let's you write:
 
         # etc.
 
+=head1 UTILITY FUNCTIONS
+
+This module offers a single utility function, C<findsym()>.
+
+=over 4
+
+=item findsym
+
+  my $symbol = Attribute::Handlers::findsym($package, $referent);
+
+The function looks in the symbol table of C<$package> for the typeglob for
+C<$referent>, which is a reference to a variable or subroutine (SCALAR, ARRAY,
+HASH, or CODE). If it finds the typeglob, it returns it. Otherwise, it returns
+undef. Note that C<findsym> memoizes the typeglobs it has previously
+successfully found, so subsequent calls with the same arguments should be
+must faster.
+
+=back
 
 =head1 DIAGNOSTICS
 
@@ -833,15 +914,20 @@ this won't happen.
 
 =head1 AUTHOR
 
-Damian Conway (damian@conway.org)
+Damian Conway (damian@conway.org). The maintainer of this module is now Rafael
+Garcia-Suarez (rgarciasuarez@gmail.com).
+
+Maintainer of the CPAN release is Steffen Mueller (smueller@cpan.org).
+Contact him with technical difficulties with respect to the packaging of the
+CPAN module.
 
 =head1 BUGS
 
 There are undoubtedly serious bugs lurking somewhere in code this funky :-)
 Bug reports and other feedback are most welcome.
 
-=head1 COPYRIGHT
+=head1 COPYRIGHT AND LICENSE
 
-         Copyright (c) 2001, Damian Conway. All Rights Reserved.
+         Copyright (c) 2001-2009, Damian Conway. All Rights Reserved.
        This module is free software. It may be used, redistributed
            and/or modified under the same terms as Perl itself.

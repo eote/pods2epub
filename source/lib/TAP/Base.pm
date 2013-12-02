@@ -9,22 +9,21 @@ use TAP::Object;
 
 =head1 NAME
 
-TAP::Base - Base class that provides common functionality to L<TAP::Parser> and L<TAP::Harness>
+TAP::Base - Base class that provides common functionality to L<TAP::Parser>
+and L<TAP::Harness>
 
 =head1 VERSION
 
-Version 3.14
+Version 3.21
 
 =cut
 
-$VERSION = '3.14';
+$VERSION = '3.21';
 
-my $GOT_TIME_HIRES;
-
-BEGIN {
+use constant GOT_TIME_HIRES => do {
     eval 'use Time::HiRes qw(time);';
-    $GOT_TIME_HIRES = $@ ? 0 : 1;
-}
+    $@ ? 0 : 1;
+};
 
 =head1 SYNOPSIS
 
@@ -51,16 +50,7 @@ C<TAP::Base> provides callback management.
 
 =head2 Class Methods
 
-=head3 C<new>
-
 =cut
-
-sub new {
-    my ( $class, $arg_for ) = @_;
-
-    my $self = bless {}, $class;
-    return $self->_initialize($arg_for);
-}
 
 sub _initialize {
     my ( $self, $arg_for, $ok_callback ) = @_;
@@ -134,6 +124,6 @@ Return true if the time returned by get_time is high resolution (i.e. if Time::H
 
 =cut
 
-sub time_is_hires { return $GOT_TIME_HIRES }
+sub time_is_hires { return GOT_TIME_HIRES }
 
 1;

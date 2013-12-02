@@ -18,7 +18,8 @@ my(@XSStack);	# Stack of conditionals and INCLUDEs
 my($XSS_work_idx, $cpp_next_tmp);
 
 use vars qw($VERSION);
-$VERSION = '2.19';
+$VERSION = '2.2205';
+$VERSION = eval $VERSION if $VERSION =~ /_/;
 
 use vars qw(%input_expr %output_expr $ProtoUsed @InitFileCode $FH $proto_re $Overload $errors $Fallback
 	    $cplusplus $hiertype $WantPrototypes $WantVersionChk $except $WantLineNumbers
@@ -193,8 +194,15 @@ sub process_file {
     close(TYPEMAP);
   }
 
-  foreach my $key (keys %input_expr) {
-    $input_expr{$key} =~ s/;*\s+\z//;
+  foreach my $value (values %input_expr) {
+    $value =~ s/;*\s+\z//;
+    # Move C pre-processor instructions to column 1 to be strictly ANSI
+    # conformant. Some pre-processors are fussy about this.
+    $value =~ s/^\s+#/#/mg;
+  }
+  foreach my $value (values %output_expr) {
+    # And again.
+    $value =~ s/^\s+#/#/mg;
   }
 
   my ($cast, $size);
@@ -203,7 +211,9 @@ sub process_file {
   $size = qr[,\s* (??{ $bal }) ]x; # Third arg (to setpvn)
 
   foreach my $key (keys %output_expr) {
-    BEGIN { $^H |= 0x00200000 }; # Equivalent to: use re 'eval', but hardcoded so we can compile re.xs
+    # We can still bootstrap compile 're', because in code re.pm is 
+    # available to miniperl, and does not attempt to load the XS code.
+    use re 'eval';
 
     my ($t, $with_size, $arg, $sarg) =
       ($output_expr{$key} =~
@@ -220,9 +230,10 @@ sub process_file {
 
   # Match an XS keyword
   $BLOCK_re= '\s*(' . join('|', qw(
-				   REQUIRE BOOT CASE PREINIT INPUT INIT CODE PPCODE OUTPUT
-				   CLEANUP ALIAS ATTRS PROTOTYPES PROTOTYPE VERSIONCHECK INCLUDE
-				   SCOPE INTERFACE INTERFACE_MACRO C_ARGS POSTCALL OVERLOAD FALLBACK
+				   REQUIRE BOOT CASE PREINIT INPUT INIT CODE PPCODE
+				   OUTPUT CLEANUP ALIAS ATTRS PROTOTYPES PROTOTYPE
+				   VERSIONCHECK INCLUDE INCLUDE_COMMAND SCOPE INTERFACE
+				   INTERFACE_MACRO C_ARGS POSTCALL OVERLOAD FALLBACK
 				  )) . "|$END)\\s*:";
 
   
@@ -298,10 +309,62 @@ EOM
     exit 0; # Not a fatal error for the caller process
   }
 
-    print <<"EOF";
+  print 'ExtUtils::ParseXS::CountLines'->end_marker, "\n" if $WantLineNumbers;
+
+  print <<"EOF";
 #ifndef PERL_UNUSED_VAR
 #  define PERL_UNUSED_VAR(var) if (0) var = var
 #endif
+
+EOF
+
+  print <<"EOF";
+#ifndef PERL_ARGS_ASSERT_CROAK_XS_USAGE
+#define PERL_ARGS_ASSERT_CROAK_XS_USAGE assert(cv); assert(params)
+
+/* prototype to pass -Wmissing-prototypes */
+STATIC void
+S_croak_xs_usage(pTHX_ const CV *const cv, const char *const params);
+
+STATIC void
+S_croak_xs_usage(pTHX_ const CV *const cv, const char *const params)
+{
+    const GV *const gv = CvGV(cv);
+
+    PERL_ARGS_ASSERT_CROAK_XS_USAGE;
+
+    if (gv) {
+        const char *const gvname = GvNAME(gv);
+        const HV *const stash = GvSTASH(gv);
+        const char *const hvname = stash ? HvNAME(stash) : NULL;
+
+        if (hvname)
+            Perl_croak(aTHX_ "Usage: %s::%s(%s)", hvname, gvname, params);
+        else
+            Perl_croak(aTHX_ "Usage: %s(%s)", gvname, params);
+    } else {
+        /* Pants. I don't think that it should be possible to get here. */
+        Perl_croak(aTHX_ "Usage: CODE(0x%"UVxf")(%s)", PTR2UV(cv), params);
+    }
+}
+#undef  PERL_ARGS_ASSERT_CROAK_XS_USAGE
+
+#ifdef PERL_IMPLICIT_CONTEXT
+#define croak_xs_usage(a,b)	S_croak_xs_usage(aTHX_ a,b)
+#else
+#define croak_xs_usage		S_croak_xs_usage
+#endif
+
+#endif
+
+/* NOTE: the prototype of newXSproto() is different in versions of perls,
+ * so we define a portable version of newXSproto()
+ */
+#ifdef newXS_flags
+#define newXSproto_portable(name, c_impl, file, proto) newXS_flags(name, c_impl, file, proto, 0)
+#else
+#define newXSproto_portable(name, c_impl, file, proto) (PL_Sv=(SV*)newXS(name, c_impl, file), sv_setpv(PL_Sv, proto), (CV*)PL_Sv)
+#endif /* !defined(newXS_flags) */
 
 EOF
 
@@ -360,7 +423,7 @@ EOF
 	   ." followed by a statement on column one?)")
       if $line[0] =~ /^\s/;
     
-    my ($class, $externC, $static, $elipsis, $wantRETVAL, $RETVAL_no_return);
+    my ($class, $externC, $static, $ellipsis, $wantRETVAL, $RETVAL_no_return);
     my (@fake_INPUT_pre);	# For length(s) generated variables
     my (@fake_INPUT);
     
@@ -386,7 +449,7 @@ EOF
     $xsreturn = 0;
 
     $_ = shift(@line);
-    while (my $kwd = check_keyword("REQUIRE|PROTOTYPES|FALLBACK|VERSIONCHECK|INCLUDE")) {
+    while (my $kwd = check_keyword("REQUIRE|PROTOTYPES|FALLBACK|VERSIONCHECK|INCLUDE(?:_COMMAND)?|SCOPE")) {
       &{"${kwd}_handler"}() ;
       next PARAGRAPH unless @line ;
       $_ = shift(@line);
@@ -458,11 +521,11 @@ EOF
 	  next unless defined($pre) && length($pre);
 	  my $out_type = '';
 	  my $inout_var;
-	  if ($process_inout and s/^(IN|IN_OUTLIST|OUTLIST|OUT|IN_OUT)\s+//) {
+	  if ($process_inout and s/^(IN|IN_OUTLIST|OUTLIST|OUT|IN_OUT)\b\s*//) {
 	    my $type = $1;
 	    $out_type = $type if $type ne 'IN';
-	    $arg =~ s/^(IN|IN_OUTLIST|OUTLIST|OUT|IN_OUT)\s+//;
-	    $pre =~ s/^(IN|IN_OUTLIST|OUTLIST|OUT|IN_OUT)\s+//;
+	    $arg =~ s/^(IN|IN_OUTLIST|OUTLIST|OUT|IN_OUT)\b\s*//;
+	    $pre =~ s/^(IN|IN_OUTLIST|OUTLIST|OUT|IN_OUT)\b\s*//;
 	  }
 	  my $islength;
 	  if ($name =~ /^length\( \s* (\w+) \s* \)\z/x) {
@@ -492,7 +555,7 @@ EOF
     } else {
       @args = split(/\s*,\s*/, $orig_args);
       for (@args) {
-	if ($process_inout and s/^(IN|IN_OUTLIST|OUTLIST|IN_OUT|OUT)\s+//) {
+	if ($process_inout and s/^(IN|IN_OUTLIST|OUTLIST|IN_OUT|OUT)\b\s*//) {
 	  my $out_type = $1;
 	  next if $out_type eq 'IN';
 	  $only_C_inlist{$_} = 1 if $out_type eq "OUTLIST";
@@ -505,7 +568,6 @@ EOF
       my $arg0 = ((defined($static) or $func_name eq 'new')
 		  ? "CLASS" : "THIS");
       unshift(@args, $arg0);
-      ($report_args = "$arg0, $report_args") =~ s/^\w+, $/$arg0/;
     }
     my $extra_args = 0;
     @args_num = ();
@@ -513,7 +575,7 @@ EOF
     my $report_args = '';
     foreach my $i (0 .. $#args) {
       if ($args[$i] =~ s/\.\.\.//) {
-	$elipsis = 1;
+	$ellipsis = 1;
 	if ($args[$i] eq '' && $i == $#args) {
 	  $report_args .= ", ...";
 	  pop(@args);
@@ -577,7 +639,7 @@ EOF
     print Q(<<"EOF") if $INTERFACE ;
 #    dXSFUNCTION($ret_type);
 EOF
-    if ($elipsis) {
+    if ($ellipsis) {
       $cond = ($min_args ? qq(items < $min_args) : 0);
     } elsif ($min_args == $num_args) {
       $cond = qq(items != $min_args);
@@ -590,22 +652,17 @@ EOF
 #    *errbuf = '\0';
 EOF
 
-    if ($ALIAS)
-      { print Q(<<"EOF") if $cond }
+    if($cond) {
+    print Q(<<"EOF");
 #    if ($cond)
-#       Perl_croak(aTHX_ "Usage: %s(%s)", GvNAME(CvGV(cv)), "$report_args");
+#       croak_xs_usage(cv,  "$report_args");
 EOF
-    else
-      { print Q(<<"EOF") if $cond }
-#    if ($cond)
-#       Perl_croak(aTHX_ "Usage: %s(%s)", "$pname", "$report_args");
-EOF
-    
-     # cv doesn't seem to be used, in most cases unless we go in 
-     # the if of this else
-     print Q(<<"EOF");
+    } else {
+    # cv likely to be unused
+    print Q(<<"EOF");
 #    PERL_UNUSED_VAR(cv); /* -W */
 EOF
+    }
 
     #gcc -Wall: if an xsub has PPCODE is used
     #it is possible none of ST, XSRETURN or XSprePUSH macros are used
@@ -802,7 +859,7 @@ EOF
 	next;
       }
       last if $_ eq "$END:";
-      death(/^$BLOCK_re/o ? "Misplaced `$1:'" : "Junk at end of function");
+      death(/^$BLOCK_re/o ? "Misplaced `$1:'" : "Junk at end of function ($_)");
     }
     
     print Q(<<"EOF") if $except;
@@ -825,12 +882,12 @@ EOF
 #
 EOF
 
-    my $newXS = "newXS" ;
-    my $proto = "" ;
+    our $newXS = "newXS" ;
+    our $proto = "" ;
     
     # Build the prototype string for the xsub
     if ($ProtoThisXSUB) {
-      $newXS = "newXSproto";
+      $newXS = "newXSproto_portable";
       
       if ($ProtoThisXSUB eq 2) {
 	# User has specified empty prototype
@@ -842,7 +899,7 @@ EOF
 	  $proto_arg[$min_args] .= ";" ;
 	}
 	push @proto_arg, "$s\@"
-	  if $elipsis ;
+	  if $ellipsis ;
 	
 	$proto = join ("", grep defined, @proto_arg);
       }
@@ -852,23 +909,20 @@ EOF
       }
       $proto = qq{, "$proto"};
     }
-    
+
     if (%XsubAliases) {
       $XsubAliases{$pname} = 0
 	unless defined $XsubAliases{$pname} ;
       while ( ($name, $value) = each %XsubAliases) {
 	push(@InitFileCode, Q(<<"EOF"));
-#        cv = newXS(\"$name\", XS_$Full_func_name, file);
+#        cv = ${newXS}(\"$name\", XS_$Full_func_name, file$proto);
 #        XSANY.any_i32 = $value ;
-EOF
-	push(@InitFileCode, Q(<<"EOF")) if $proto;
-#        sv_setpv((SV*)cv$proto) ;
 EOF
       }
     }
     elsif (@Attributes) {
       push(@InitFileCode, Q(<<"EOF"));
-#        cv = newXS(\"$pname\", XS_$Full_func_name, file);
+#        cv = ${newXS}(\"$pname\", XS_$Full_func_name, file$proto);
 #        apply_attrs_string("$Package", cv, "@Attributes", 0);
 EOF
     }
@@ -876,17 +930,18 @@ EOF
       while ( ($name, $value) = each %Interfaces) {
 	$name = "$Package\::$name" unless $name =~ /::/;
 	push(@InitFileCode, Q(<<"EOF"));
-#        cv = newXS(\"$name\", XS_$Full_func_name, file);
+#        cv = ${newXS}(\"$name\", XS_$Full_func_name, file$proto);
 #        $interface_macro_set(cv,$value) ;
-EOF
-	push(@InitFileCode, Q(<<"EOF")) if $proto;
-#        sv_setpv((SV*)cv$proto) ;
 EOF
       }
     }
-    else {
+    elsif($newXS eq 'newXS'){ # work around P5NCI's empty newXS macro
       push(@InitFileCode,
 	   "        ${newXS}(\"$pname\", XS_$Full_func_name, file$proto);\n");
+    }
+    else {
+      push(@InitFileCode,
+	   "        (void)${newXS}(\"$pname\", XS_$Full_func_name, file$proto);\n");
     }
   }
 
@@ -905,7 +960,7 @@ EOF
     /* Making a sub named "${Package}::()" allows the package */
     /* to be findable via fetchmethod(), and causes */
     /* overload::Overloaded("${Package}") to return true. */
-    newXS("${Package}::()", XS_${Packid}_nil, file$proto);
+    (void)${newXS}("${Package}::()", XS_${Packid}_nil, file$proto);
 MAKE_FETCHMETHOD_WORK
   }
 
@@ -931,10 +986,17 @@ EOF
 ##endif
 EOF
 
+  #Under 5.8.x and lower, newXS is declared in proto.h as expecting a non-const
+  #file name argument. If the wrong qualifier is used, it causes breakage with
+  #C++ compilers and warnings with recent gcc.
   #-Wall: if there is no $Full_func_name there are no xsubs in this .xs
   #so `file' is unused
   print Q(<<"EOF") if $Full_func_name;
+##if (PERL_REVISION == 5 && PERL_VERSION < 9)
 #    char* file = __FILE__;
+##else
+#    const char* file = __FILE__;
+##endif
 EOF
 
   print Q("#\n");
@@ -981,12 +1043,12 @@ EOF
     print "\n    /* End of Initialisation Section */\n\n" ;
   }
 
-  if ($] >= 5.009) {
-    print <<'EOF';
-    if (PL_unitcheckav)
-         call_list(PL_scopestack_ix, PL_unitcheckav);
+  print Q(<<'EOF');
+##if (PERL_REVISION == 5 && PERL_VERSION >= 9)
+#  if (PL_unitcheckav)
+#       call_list(PL_scopestack_ix, PL_unitcheckav);
+##endif
 EOF
-  }
 
   print Q(<<"EOF");
 #    XSRETURN_YES;
@@ -1115,7 +1177,7 @@ sub INPUT_handler {
       print "\tSTRLEN\tSTRLEN_length_of_$2;\n";
       $lengthof{$2} = $name;
       # $islengthof{$name} = $1;
-      $deferred .= "\n\tXSauto_length_of_$2 = STRLEN_length_of_$2;";
+      $deferred .= "\n\tXSauto_length_of_$2 = STRLEN_length_of_$2;\n";
     }
 
     # check for optional initialisation code
@@ -1307,7 +1369,7 @@ sub OVERLOAD_handler()
       $Overload = 1 unless $Overload;
       my $overload = "$Package\::(".$1 ;
       push(@InitFileCode,
-	   "        newXS(\"$overload\", XS_$Full_func_name, file$proto);\n");
+	   "        (void)${newXS}(\"$overload\", XS_$Full_func_name, file$proto);\n");
     }
   }  
 }
@@ -1401,16 +1463,10 @@ sub SCOPE_handler ()
     death("Error: Only 1 SCOPE declaration allowed per xsub")
       if $scope_in_this_xsub ++ ;
 
-    for (;  !/^$BLOCK_re/o;  $_ = shift(@line)) {
-      next unless /\S/;
-      TrimWhitespace($_) ;
-      if ($_ =~ /^DISABLE/i) {
-	$ScopeThisXSUB = 0
-      } elsif ($_ =~ /^ENABLE/i) {
-	$ScopeThisXSUB = 1
-      }
-    }
-
+    TrimWhitespace($_);
+    death ("Error: SCOPE: ENABLE/DISABLE")
+        unless /^(ENABLE|DISABLE)\b/i;
+    $ScopeThisXSUB = ( uc($1) eq 'ENABLE' );
   }
 
 sub PROTOTYPES_handler ()
@@ -1427,6 +1483,22 @@ sub PROTOTYPES_handler ()
     $WantPrototypes = 1 if $1 eq 'ENABLE' ;
     $WantPrototypes = 0 if $1 eq 'DISABLE' ;
     $ProtoUsed = 1 ;
+
+  }
+
+sub PushXSStack
+  {
+    # Save the current file context.
+    push(@XSStack, {
+		    type            => 'file',
+		    LastLine        => $lastline,
+		    LastLineNo      => $lastline_no,
+		    Line            => \@line,
+		    LineNo          => \@line_no,
+		    Filename        => $filename,
+		    Filepathname    => $filepathname,
+		    Handle          => $FH,
+		   }) ;
 
   }
 
@@ -1448,17 +1520,16 @@ sub INCLUDE_handler ()
 
     ++ $IncludedFiles{$_} unless /\|\s*$/ ;
 
-    # Save the current file context.
-    push(@XSStack, {
-		    type		=> 'file',
-		    LastLine        => $lastline,
-		    LastLineNo      => $lastline_no,
-		    Line            => \@line,
-		    LineNo          => \@line_no,
-		    Filename        => $filename,
-		    Filepathname    => $filepathname,
-		    Handle          => $FH,
-		   }) ;
+    if (/\|\s*$/ && /^\s*perl\s/) {
+      Warn("The INCLUDE directive with a command is discouraged." .
+           " Use INCLUDE_COMMAND instead! In particular using 'perl'" .
+           " in an 'INCLUDE: ... |' directive is not guaranteed to pick" .
+           " up the correct perl. The INCLUDE_COMMAND directive allows" .
+           " the use of \$^X as the currently running perl, see" .
+           " 'perldoc perlxs' for details.");
+    }
+
+    PushXSStack();
 
     $FH = Symbol::gensym();
 
@@ -1471,7 +1542,8 @@ sub INCLUDE_handler ()
 #
 EOF
 
-    $filepathname = $filename = $_ ;
+    $filename = $_ ;
+    $filepathname = "$dir/$filename";
 
     # Prime the pump by reading the first
     # non-blank line
@@ -1483,7 +1555,51 @@ EOF
 
     $lastline = $_ ;
     $lastline_no = $. ;
+  }
 
+sub INCLUDE_COMMAND_handler ()
+  {
+    # the rest of the current line should contain a valid command
+
+    TrimWhitespace($_) ;
+
+    death("INCLUDE_COMMAND: command missing")
+      unless $_ ;
+
+    death("INCLUDE_COMMAND: pipes are illegal")
+      if /^\s*\|/ or /\|\s*$/ ;
+
+    PushXSStack();
+
+    $FH = Symbol::gensym();
+
+    # If $^X is used in INCLUDE_COMMAND, we know it's supposed to be
+    # the same perl interpreter as we're currently running
+    s/^\s*\$\^X/$^X/;
+
+    # open the new file
+    open ($FH, "-|", "$_")
+      or death("Cannot run command '$_' to include its output: $!") ;
+
+    print Q(<<"EOF");
+#
+#/* INCLUDE_COMMAND:  Including output of '$_' from '$filename' */
+#
+EOF
+
+    $filename = $_ ;
+    $filepathname = "$dir/$filename";
+
+    # Prime the pump by reading the first
+    # non-blank line
+
+    # skip leading blank lines
+    while (<$FH>) {
+      last unless /^\s*$/ ;
+    }
+
+    $lastline = $_ ;
+    $lastline_no = $. ;
   }
 
 sub PopFile()
@@ -2027,11 +2143,24 @@ encountered during processing of the XS file.
 
 Based on xsubpp code, written by Larry Wall.
 
-Maintained by Ken Williams, <ken@mathforum.org>
+Maintained by: 
+
+=over 4
+
+=item *
+
+Ken Williams, <ken@mathforum.org>
+
+=item *
+
+David Golden, <dagolden@cpan.org>
+
+=back
 
 =head1 COPYRIGHT
 
-Copyright 2002-2003 Ken Williams.  All rights reserved.
+Copyright 2002-2009 by Ken Williams, David Golden and other contributors.  All
+rights reserved.
 
 This library is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.

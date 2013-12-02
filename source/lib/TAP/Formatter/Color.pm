@@ -71,11 +71,11 @@ TAP::Formatter::Color - Run Perl test scripts with color
 
 =head1 VERSION
 
-Version 3.14
+Version 3.21
 
 =cut
 
-$VERSION = '3.14';
+$VERSION = '3.21';
 
 =head1 DESCRIPTION
 

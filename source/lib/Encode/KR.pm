@@ -1,14 +1,15 @@
 package Encode::KR;
 BEGIN {
-    if (ord("A") == 193) {
-	die "Encode::KR not supported on EBCDIC\n";
+    if ( ord("A") == 193 ) {
+        die "Encode::KR not supported on EBCDIC\n";
     }
 }
-our $VERSION = do { my @r = (q$Revision: 2.0 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
-
+use strict;
+use warnings;
 use Encode;
+our $VERSION = do { my @r = ( q$Revision: 2.3 $ =~ /\d+/g ); sprintf "%d." . "%02d" x $#r, @r };
 use XSLoader;
-XSLoader::load(__PACKAGE__,$VERSION);
+XSLoader::load( __PACKAGE__, $VERSION );
 
 use Encode::KR::2022_KR;
 
@@ -34,7 +35,7 @@ are as follows.
   Canonical   Alias		Description
   --------------------------------------------------------------------
   euc-kr      /\beuc.*kr$/i	EUC (Extended Unix Character)
-	      /\bkr.*euc$/i
+          /\bkr.*euc$/i
   ksc5601-raw			Korean standard code set (as is)
   cp949	      /(?:x-)?uhc$/i
               /(?:x-)?windows-949$/i
@@ -59,11 +60,7 @@ mean "cp949" encodings.  To fix that, the following aliases are set;
   qr/ks_c_5601-1987$/i     => '"cp949"'
 
 The ASCII region (0x00-0x7f) is preserved for all encodings, even
-though this conflicts with mappings by the Unicode Consortium.  See
-
-L<http://www.debian.or.jp/~kubota/unicode-symbols.html.en>
-
-to find out why it is implemented that way.
+though this conflicts with mappings by the Unicode Consortium.
 
 =head1 SEE ALSO
 

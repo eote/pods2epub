@@ -7,9 +7,10 @@ use strict;
 use constant IS_WIN32 => ( $^O =~ /^(MS)?Win32$/ );
 use constant IS_VMS => ( $^O eq 'VMS' );
 
-use TAP::Harness              ();
-use TAP::Parser::Aggregator   ();
-use TAP::Parser::Source::Perl ();
+use TAP::Harness                     ();
+use TAP::Parser::Aggregator          ();
+use TAP::Parser::Source              ();
+use TAP::Parser::SourceHandler::Perl ();
 
 use TAP::Parser::Utils qw( split_shell );
 
@@ -27,6 +28,7 @@ use vars qw(
   $Directives
   $Timer
   $Strap
+  $HarnessSubclass
   $has_time_hires
   $IgnoreExit
 );
@@ -44,11 +46,11 @@ Test::Harness - Run Perl standard test scripts with statistics
 
 =head1 VERSION
 
-Version 3.14
+Version 3.21
 
 =cut
 
-$VERSION = '3.14';
+$VERSION = '3.21';
 
 # Backwards compatibility for exportable variable names.
 *verbose  = *Verbose;
@@ -118,8 +120,8 @@ one of the messages in the DIAGNOSTICS section.
 
 sub _has_taint {
     my $test = shift;
-    return TAP::Parser::Source::Perl->get_taint(
-        TAP::Parser::Source::Perl->shebang($test) );
+    return TAP::Parser::SourceHandler::Perl->get_taint(
+        TAP::Parser::Source->shebang($test) );
 }
 
 sub _aggregate {
@@ -128,40 +130,20 @@ sub _aggregate {
     # Don't propagate to our children
     local $ENV{HARNESS_OPTIONS};
 
-    if (IS_VMS) {
+    _apply_extra_INC($harness);
+    _aggregate_tests( $harness, $aggregate, @tests );
+}
 
-        # Jiggery pokery doesn't appear to work on VMS - so disable it
-        # pending investigation.
-        _aggregate_tests( $harness, $aggregate, @tests );
-    }
-    else {
-        my $path_sep  = $Config{path_sep};
-        my $path_pat  = qr{$path_sep};
-        my @extra_inc = _filtered_inc();
+# Make sure the child seens all the extra junk in @INC
+sub _apply_extra_INC {
+    my $harness = shift;
 
-        # Supply -I switches in taint mode
-        $harness->callback(
-            parser_args => sub {
-                my ( $args, $test ) = @_;
-                if ( _has_taint( $test->[0] ) ) {
-                    push @{ $args->{switches} }, map {"-I$_"} _filtered_inc();
-                }
-            }
-        );
-
-        my $previous = $ENV{PERL5LIB};
-        local $ENV{PERL5LIB};
-
-        if ($previous) {
-            push @extra_inc, split( $path_pat, $previous );
+    $harness->callback(
+        parser_args => sub {
+            my ( $args, $test ) = @_;
+            push @{ $args->{switches} }, map {"-I$_"} _filtered_inc();
         }
-
-        if (@extra_inc) {
-            $ENV{PERL5LIB} = join( $path_sep, @extra_inc );
-        }
-
-        _aggregate_tests( $harness, $aggregate, @tests );
-    }
+    );
 }
 
 sub _aggregate_tests {
@@ -227,9 +209,10 @@ sub _new_harness {
     my $sub_args = shift || {};
 
     my ( @lib, @switches );
-    for my $opt ( split_shell( $Switches, $ENV{HARNESS_PERL_SWITCHES} ) ) {
+    my @opt = split_shell( $Switches, $ENV{HARNESS_PERL_SWITCHES} );
+    while ( my $opt = shift @opt ) {
         if ( $opt =~ /^ -I (.*) $ /x ) {
-            push @lib, $1;
+            push @lib, length($1) ? $1 : shift @opt;
         }
         else {
             push @switches, $opt;
@@ -260,9 +243,6 @@ sub _new_harness {
             if ( $opt =~ /^j(\d*)$/ ) {
                 $args->{jobs} = $1 || 9;
             }
-            elsif ( $opt eq 'f' ) {
-                $args->{fork} = 1;
-            }
             elsif ( $opt eq 'c' ) {
                 $args->{color} = 1;
             }
@@ -272,7 +252,8 @@ sub _new_harness {
         }
     }
 
-    return TAP::Harness->new($args);
+    my $class = $ENV{HARNESS_SUBCLASS} || 'TAP::Harness';
+    return TAP::Harness->_construct( $class, $args );
 }
 
 # Get the parts of @INC which are changed from the stock list AND
@@ -290,7 +271,7 @@ sub _filtered_inc {
     elsif (IS_WIN32) {
 
         # Lose any trailing backslashes in the Win32 paths
-        s/[\\\/]+$// foreach @inc;
+        s/[\\\/]+$// for @inc;
     }
 
     my @default_inc = _default_inc();
@@ -320,8 +301,14 @@ sub _filtered_inc {
 
     sub _default_inc {
         return @inc if @inc;
+
+        local $ENV{PERL5LIB};
+        local $ENV{PERLLIB};
+
         my $perl = $ENV{HARNESS_PERL} || $^X;
-        chomp( @inc = `$perl -le "print join qq[\\n], \@INC"` );
+
+        # Avoid using -l for the benefit of Perl 6
+        chomp( @inc = `"$perl" -e "print join qq[\\n], \@INC, q[]"` );
         return @inc;
     }
 }
@@ -544,15 +531,19 @@ Provide additional options to the harness. Currently supported options are:
 
 Run <n> (default 9) parallel jobs.
 
-=item C<< f >>
+=item C<< c >>
 
-Use forked parallelism.
+Try to color output. See L<TAP::Formatter::Base/"new">.
 
 =back
 
 Multiple options may be separated by colons:
 
-    HARNESS_OPTIONS=j9:f make test
+    HARNESS_OPTIONS=j9:c make test
+
+=item C<HARNESS_SUBCLASS>
+
+Specifies a TAP::Harness subclass to be used in place of TAP::Harness.
 
 =back
 
@@ -562,10 +553,9 @@ Normally when a Perl program is run in taint mode the contents of the
 C<PERL5LIB> environment variable do not appear in C<@INC>.
 
 Because C<PERL5LIB> is often used during testing to add build
-directories to C<@INC> C<Test::Harness> (actually
-L<TAP::Parser::Source::Perl>) passes the names of any directories found
-in C<PERL5LIB> as -I switches. The net effect of this is that
-C<PERL5LIB> is honoured even in taint mode.
+directories to C<@INC> C<Test::Harness> passes the names of any
+directories found in C<PERL5LIB> as -I switches. The net effect of this
+is that C<PERL5LIB> is honoured even in taint mode.
 
 =head1 SEE ALSO
 
